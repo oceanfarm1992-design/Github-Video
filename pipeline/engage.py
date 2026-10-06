@@ -101,6 +101,8 @@ def run(conn):
             continue
         try:
             if p["platform"] == "youtube":
+                if os.environ.get("YOUTUBE_COMMENT_REPLIES") != "1":
+                    continue  # YouTube audience is pointed to the description instead
                 token = token or youtube_token()
                 own = own or yt_own_channel(token)
                 comments = list(yt_comments(p["post_id"], token, own))

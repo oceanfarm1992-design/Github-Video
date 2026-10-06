@@ -36,10 +36,12 @@ def youtube_token():
     return os.environ.get("YOUTUBE_ACCESS_TOKEN") or None
 
 
-def youtube_upload(token, c):
-    """YouTube Data API v3 resumable upload. Shorts are detected by 9:16 + <=60s."""
+def youtube_upload(token, c, resource_url=None):
+    """YouTube Data API v3 resumable upload. Shorts are detected by 9:16 + <=60s.
+    YouTube viewers are sent to the description, so the approved resource link goes there."""
+    desc = c["caption"] + (f"\n\nLink: {resource_url}" if resource_url else "")
     meta = {"snippet": {"title": (c["title"] + " #Shorts")[:100],
-                        "description": c["caption"] + "\n\n" + " ".join(json.loads(c["hashtags"])),
+                        "description": desc + "\n\n" + " ".join(json.loads(c["hashtags"])),
                         "categoryId": "28"},
             "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}}
     data = open(c["video_path"], "rb").read()
@@ -147,7 +149,9 @@ def run(conn):
                 continue
             try:
                 if name == "youtube":
-                    post_id, url = youtube_upload(youtube_token(), c)
+                    m = conn.execute("SELECT response FROM cta_map WHERE video_id=?", (c["id"],)).fetchone()
+                    resource = m["response"].split("link: ", 1)[-1] if m else None
+                    post_id, url = youtube_upload(youtube_token(), c, resource)
                 else:
                     video_url = video_url or public_video_url(c)
                     if not video_url:
