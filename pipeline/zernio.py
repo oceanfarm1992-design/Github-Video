@@ -70,7 +70,7 @@ def publish_reel(platform, c, video_url):
     # "processing"/"scheduled"/"publishing" are normal in-flight states; only explicit failures raise.
     if plat.get("status") in ("failed", "error", "rejected") or (plat.get("errorMessage") and plat.get("status") != "published"):
         raise RuntimeError(f"zernio {platform}: {plat.get('errorMessage') or plat.get('status')}")
-    pid = _first(plat, "platformPostId") or post.get("_id")
+    pid = post.get("_id") or _first(plat, "platformPostId")  # Zernio id: used to list/reply to comments
     if not pid:
         raise RuntimeError(f"zernio {platform}: no post id in response")
     try:
@@ -95,3 +95,33 @@ def create_automation(platform, acct, platform_post_id, zernio_post_id, c):
         "dmMessage": cta["response"],
         "commentReply": "Sent you a DM with the link.",
     })
+
+
+# ------------------------------------------------------------- comments
+def list_comments(zernio_post_id, platform):
+    """Top-level comments on a Zernio post (cached by Zernio for up to 10 minutes)."""
+    acct = account(platform)
+    cursor = None
+    for _ in range(5):  # at most 500 comments per post per run
+        q = f"?accountId={acct['_id']}&limit=100" + (f"&cursor={cursor}" if cursor else "")
+        data = _call(f"/inbox/comments/{zernio_post_id}{q}")
+        d = data.get("data", data)
+        items = d.get("comments", d.get("items", d if isinstance(d, list) else []))
+        for c in items:
+            frm = c.get("from") or c.get("author") or {}
+            yield {"comment_id": c.get("id"), "author_id": frm.get("id"), "author_name": frm.get("name"),
+                   "body": c.get("message"), "is_owner": bool(c.get("isOwner"))}
+        cursor = d.get("nextCursor") if isinstance(d, dict) else None
+        if not cursor or not (d.get("hasMore") if isinstance(d, dict) else False):
+            break
+
+
+def reply_comment(zernio_post_id, platform, comment_id, text):
+    """Public reply to one comment. Idempotency-Key makes a retried call post only once."""
+    import uuid
+    acct = account(platform)
+    key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{acct['_id']}|{zernio_post_id}|{comment_id}|{text}"))
+    h = {"Authorization": f"Bearer {os.environ['ZERNIO_API_KEY']}", "Content-Type": "application/json",
+         "Idempotency-Key": key}
+    request(f"{BASE}/inbox/comments/{zernio_post_id}", headers=h, method="POST", attempts=2,
+            data=json.dumps({"accountId": acct["_id"], "message": text, "commentId": comment_id}).encode())

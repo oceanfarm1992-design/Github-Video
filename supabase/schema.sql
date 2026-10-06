@@ -30,6 +30,10 @@ create table if not exists comment_events (
 create index if not exists comment_events_post on comment_events (platform, post_id, author_id);
 create index if not exists comment_events_status on comment_events (status);
 
+-- Reply log columns (added later; safe to re-run)
+alter table comment_events add column if not exists kind text;        -- keyword | ai
+alter table comment_events add column if not exists reply_text text;  -- exactly what was posted
+
 -- Lock the tables: only the service-role key (used by the pipeline) can access them.
 alter table cta_links enable row level security;
 alter table comment_events enable row level security;

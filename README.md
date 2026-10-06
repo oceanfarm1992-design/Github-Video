@@ -37,14 +37,17 @@ Notes for public repos:
 - Scheduled workflows are auto-disabled after 60 days without repo activity; re-enable them or push a commit.
 - Public-repo Actions minutes are free; private repos have a monthly quota.
 
-## Comment -> link replies (Supabase)
+## Comment replies (Supabase)
 
-Viewers comment the video's one keyword (`GITHUB`, `TOOL`, `CODE`, `DOCS`, `DEMO`, `SOURCE`); the `engage` stage (every 30 min) replies with the approved link.
-- YouTube: the approved link is put in the video description and the outro says so; no comment bot by default (set `YOUTUBE_COMMENT_REPLIES=1` and add the `youtube.force-ssl` scope to enable public replies). Facebook/Instagram: private reply (DM) to the comment.
-- Comment events hold personal data, so they live only in Supabase (RLS locked), never in the public `data` branch.
-- One reply per comment (unique key) and one link per commenter per video; `MAX_REPLIES_PER_RUN` caps volume.
-- Setup: run `supabase/schema.sql` in the Supabase SQL editor; add secrets `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (the `sb_secret_...` key; the publishable key and JWKS URL are not needed); Instagram/Facebook DMs also need `instagram_manage_messages` / `pages_messaging` on the Meta token.
-- Meta private replies only work within 7 days of the comment; YouTube may hold link comments for review.
+The `engage` stage (every 30 min) answers follower comments automatically, on YouTube, and on Facebook/Instagram through Zernio:
+- Skipped: your own comments, emoji-only/empty, spam (links, "telegram", "crypto"...), and anything the model flags as insult/trolling/politics.
+- "Link?" / "source?" questions get a fixed approved reply (YouTube: "link is in the description"; Facebook/Instagram: "comment KEYWORD and I'll DM you the link").
+- The CTA keyword on Facebook/Instagram is answered by Zernio's comment-to-DM automation (created at publish time).
+- All other comments are answered by the cheap model in one batched call per video, using only the video's sourced facts; replies are 4-25 words, no links/hashtags/@mentions.
+- Safeguards: one reply per person per video, `MAX_REPLIES_PER_RUN` (40) and `MAX_REPLIES_PER_DAY` (150) caps, random 1.5-4 s spacing, LLM budget caps, idempotent reply log.
+- Comment events (personal data) live only in Supabase (RLS locked), never in the public `data` branch. Run `supabase/schema.sql` (safe to re-run) and add `SUPABASE_URL` + `SUPABASE_SECRET_KEY`.
+- YouTube replies need the `youtube.force-ssl` scope: re-run `python tools/youtube_auth.py` once.
+- Posts published before Zernio ids were stored (`manual-*`) cannot be answered on Facebook/Instagram.
 
 ## Platform status
 

@@ -49,3 +49,7 @@ def upsert(table, row, on_conflict):
 
 def update(table, row, **filters):
     request(_url(table, filters), data=json.dumps(row).encode(), method="PATCH", headers=_h())
+
+
+def delete(table, **filters):
+    request(_url(table, filters), method="DELETE", headers=_h())
