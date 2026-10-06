@@ -56,11 +56,12 @@ def _first(d, *keys):
 
 
 def publish_reel(platform, c, video_url):
+    from .publish import social_caption  # local import: publish imports this module
     """Returns (platform_post_id, url). Raises on failure."""
     acct = account(platform)
     data = {"shareToFeed": True} if platform == "instagram" else {"contentType": "reel", "title": c["title"][:100]}
     body = {
-        "content": c["caption"] + "\n" + " ".join(json.loads(c["hashtags"])),
+        "content": social_caption(c),
         "mediaItems": [{"type": "video", "url": video_url}],
         "platforms": [{"platform": platform, "accountId": acct["_id"], "platformSpecificData": data}],
         "publishNow": True,

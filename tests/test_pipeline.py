@@ -131,6 +131,16 @@ class Tests(unittest.TestCase):
         self.assertEqual(zernio._profile_id({"profileId": "p2"}), "p2")
         self.assertEqual(zernio.PUBLIC_REPLY, "Check your inbox, thank you!")
 
+    def test_social_caption_has_keyword_ask_and_no_link(self):
+        from pipeline.publish import social_caption
+        c = {"caption": "Want a free tool?\n\nSource: https://github.com/a/b", "hashtags": '["#AI", "#GitHub"]',
+             "_cta": {"keyword": "GITHUB", "response": "Here's the link: https://github.com/a/b"}}
+        cap = social_caption(c)
+        self.assertNotIn("http", cap)
+        self.assertIn("Comment GITHUB", cap)
+        self.assertTrue(cap.startswith("Want a free tool?"))
+        self.assertTrue(cap.endswith("#AI #GitHub"))
+
     def test_llm_skipped_without_key(self):
         config.ANTHROPIC_API_KEY = ""
         self.assertIsNone(generate.llm_rewrite(self.conn, {"title": "t"}, []))

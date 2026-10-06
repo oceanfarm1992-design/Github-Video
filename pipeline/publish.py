@@ -16,6 +16,15 @@ log = logging.getLogger("publish")
 GRAPH = "https://graph.facebook.com/v21.0"
 
 
+def social_caption(c):
+    """Facebook/Instagram caption: no link (a link in the caption kills comments). The keyword comment
+    triggers the DM with the link, which is what drives engagement."""
+    kw = (c.get("_cta") or {}).get("keyword") if isinstance(c, dict) else None
+    hook = c["caption"].split("\n\nSource:")[0].strip()
+    ask = f"\n\nComment {kw} and I'll DM you the link \U0001F4E9" if kw else ""
+    return hook + ask + "\n\n" + " ".join(json.loads(c["hashtags"]))
+
+
 def _form(d):
     return urllib.parse.urlencode(d).encode()
 
@@ -89,7 +98,7 @@ def facebook_reel(c, video_url):
             headers={"Authorization": f"OAuth {token}", "file_url": video_url})
     _post(f"{GRAPH}/{page}/video_reels", {
         "upload_phase": "finish", "video_id": s["video_id"], "video_state": "PUBLISHED",
-        "description": c["caption"] + "\n" + " ".join(json.loads(c["hashtags"])), "access_token": token})
+        "description": social_caption(c), "access_token": token})
     return s["video_id"], f"https://www.facebook.com/reel/{s['video_id']}"
 
 
@@ -98,7 +107,7 @@ def instagram_reel(c, video_url):
     ig, token = os.environ["META_IG_USER_ID"], os.environ["META_PAGE_ACCESS_TOKEN"]
     cont = _post(f"{GRAPH}/{ig}/media", {
         "media_type": "REELS", "video_url": video_url, "share_to_feed": "true", "access_token": token,
-        "caption": c["caption"] + "\n" + " ".join(json.loads(c["hashtags"]))})
+        "caption": social_caption(c)})
     for _ in range(30):
         _, _, r = request(f"{GRAPH}/{cont['id']}?fields=status_code&access_token={token}")
         status = json.loads(r).get("status_code")
