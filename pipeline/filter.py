@@ -19,6 +19,9 @@ def relevant(row):
 
 
 def run(conn):
+    # one-time retry of RSS items rejected by URL verification (older rule treated bot-blocked 403s as dead)
+    conn.execute("UPDATE topics SET status='FILTERED', attempts=1 WHERE status='SKIPPED' AND "
+                 "error='failed verification' AND source LIKE 'rss:%' AND attempts=0")
     # self-heal: re-open items skipped as irrelevant by an older, stricter rule
     for r in conn.execute("SELECT * FROM topics WHERE status='SKIPPED' AND error='irrelevant'").fetchall():
         if relevant(r):

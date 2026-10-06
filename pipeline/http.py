@@ -75,14 +75,19 @@ def gh_headers():
 
 
 def url_ok(url):
-    """Deterministic URL validation (no LLM). HEAD, falling back to GET."""
+    """Deterministic URL validation (no LLM). HEAD, falling back to GET.
+    401/403/429 mean the server answered but blocks bots (e.g. Cloudflare): the URL exists, so it counts."""
     if not url or not url.startswith(("http://", "https://")):
         return False
     for method in ("HEAD", "GET"):
         try:
-            status, _, _ = request(url, method=method, attempts=2)
-            if status < 400:
+            req = urllib.request.Request(url, headers={"User-Agent": UA}, method=method)
+            with urllib.request.urlopen(req, timeout=config.HTTP_TIMEOUT) as r:
+                if r.status < 400:
+                    return True
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403, 429):
                 return True
-        except RuntimeError:
+        except (urllib.error.URLError, TimeoutError, OSError):
             continue
     return False
