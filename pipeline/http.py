@@ -23,7 +23,8 @@ def request(url, headers=None, data=None, method=None, attempts=3):
             if e.code == 304:
                 return 304, dict(e.headers), b""
             last = e
-            if e.code in (403, 429):
+            # 403 is only a rate limit on GitHub when the quota is exhausted; elsewhere it is a permission error
+            if e.code == 429 or (e.code == 403 and e.headers.get("X-RateLimit-Remaining") == "0"):
                 reset = e.headers.get("Retry-After")
                 wait = min(int(reset), 60) if reset and reset.isdigit() else 2 ** (i + 2)
                 log.warning("rate limited %s, wait %ss", url, wait)
