@@ -24,7 +24,11 @@ W, H = 1080, 1920
 WPS = 2.6  # spoken words/sec, only used when TTS is unavailable
 PAD = 0.4  # seconds of breathing room after each narrated scene
 VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewMultilingualNeural")
-RATE = os.environ.get("TTS_RATE", "+4%")
+try:  # narration speed multiplier (1.0 = natural pace)
+    SPEED = min(1.4, max(0.8, float(os.environ.get("VOICE_SPEED", "1.12"))))
+except ValueError:
+    SPEED = 1.12
+RATE = os.environ.get("TTS_RATE", f"{round((SPEED - 1) * 100):+d}%")
 
 
 # ------------------------------------------------------------------ images
@@ -94,7 +98,7 @@ def clone_enabled():
 
 
 def voice_id():
-    return "clone-styletts2" if clone_enabled() else VOICE + RATE
+    return f"clone-styletts2-{SPEED}" if clone_enabled() else VOICE + RATE
 
 
 def speech_text(t):
@@ -109,12 +113,17 @@ def narrate_clone(texts, out_dir):
     from voiceclone import synthesize
     clips = []
     for t in texts:
-        p = out_dir / f"{db.sha('clone' + t)[:24]}.wav"
+        p = out_dir / f"{db.sha(f'clone{SPEED}' + t)[:24]}.wav"
         if not p.exists():
-            used = synthesize(speech_text(t), str(p), engine="styletts2",
-                              voice_ref_repo=os.environ["VOICE_REF_REPO"],
-                              voice_ref_cache=str(out_dir / ".voice_reference.mp3"))
-            log.info("voice engine: %s", used)
+            raw = out_dir / f"{db.sha('clone' + t)[:24]}.raw.wav"
+            if not raw.exists():
+                used = synthesize(speech_text(t), str(raw), engine="styletts2",
+                                  voice_ref_repo=os.environ["VOICE_REF_REPO"],
+                                  voice_ref_cache=str(out_dir / ".voice_reference.mp3"))
+                log.info("voice engine: %s", used)
+            # pitch-preserving speed-up (atempo)
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-filter:a",
+                            f"atempo={SPEED}", str(p)], check=True, timeout=120)
         clips.append((p, _duration(p)))
     return clips
 

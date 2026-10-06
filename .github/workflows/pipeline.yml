@@ -39,6 +39,7 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       VOICE_REPO_PAT: ${{ secrets.VOICE_REPO_PAT }}
       VOICE_REF_REPO: ${{ vars.VOICE_REF_REPO }}
+      VOICE_SPEED: ${{ vars.VOICE_SPEED || '1.12' }}
       WATERMARK_TEXT: ${{ vars.WATERMARK_TEXT }}
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
       MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
