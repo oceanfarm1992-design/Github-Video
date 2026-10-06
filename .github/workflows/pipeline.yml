@@ -90,16 +90,6 @@ jobs:
           pip install torch==2.8.0+cpu torchaudio==2.8.0+cpu --index-url https://download.pytorch.org/whl/cpu
           pip install "styletts2-voice-clone[styletts2] @ git+https://github.com/oceanfarm1992-design/styletts2-voice-clone.git"
 
-      - name: Diagnose voice token (never prints the value)
-        if: ${{ steps.stage.outputs.name == 'preview' && env.VOICE_REPO_PAT != '' }}
-        continue-on-error: true
-        run: |
-          t="$VOICE_REPO_PAT"
-          ws=no; [[ "$t" =~ [[:space:]] ]] && ws=yes
-          echo "length=${#t} type=${t:0:4} whitespace=$ws repo=$VOICE_REF_REPO"
-          code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $t" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/$VOICE_REF_REPO/contents/reference_voice.mp3")
-          echo "contents HTTP $code"
-
       - name: Restore state from `data` branch
         run: |
           mkdir -p data
@@ -110,6 +100,17 @@ jobs:
 
       - name: Run stage
         run: python -m pipeline ${{ steps.stage.outputs.name }}
+
+      - name: Upload rendered videos
+        if: steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview'
+        uses: actions/upload-artifact@v4
+        with:
+          name: videos-${{ github.run_id }}
+          path: |
+            out/video/*.mp4
+            out/video/*.srt
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Save state to `data` branch
         if: always()
@@ -125,14 +126,3 @@ jobs:
           git add pipeline.db
           git commit -q -m "state $(date -u +%FT%TZ)"
           git push -f origin data-new:data
-
-      - name: Upload rendered videos
-        if: steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview'
-        uses: actions/upload-artifact@v4
-        with:
-          name: videos-${{ github.run_id }}
-          path: |
-            out/video/*.mp4
-            out/video/*.srt
-          retention-days: 7
-          if-no-files-found: ignore
