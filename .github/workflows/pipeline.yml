@@ -37,6 +37,7 @@ jobs:
       META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      WATERMARK_TEXT: ${{ vars.WATERMARK_TEXT }}
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
       MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
       MAX_VIDEOS_PER_DAY: ${{ vars.MAX_VIDEOS_PER_DAY || '10' }}
