@@ -48,7 +48,7 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       VOICE_REPO_PAT: ${{ secrets.VOICE_REPO_PAT }}
       VOICE_REF_REPO: ${{ vars.VOICE_REF_REPO }}
-      VOICE_SPEED: ${{ vars.VOICE_SPEED || '1.2' }}
+      VOICE_SPEED: ${{ vars.VOICE_SPEED || '1.1' }}
       VOICE_STYLE_REF: ${{ vars.VOICE_STYLE_REF || 'style_reference.wav' }}
       VOICE_STYLE_BETA: ${{ vars.VOICE_STYLE_BETA || '0.0' }}
       VOICE_EXPRESSIVENESS: ${{ vars.VOICE_EXPRESSIVENESS || '1.5' }}

@@ -25,7 +25,7 @@ WPS = 2.6  # spoken words/sec, only used when TTS is unavailable
 PAD = 0.4  # seconds of breathing room after each narrated scene
 VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewMultilingualNeural")
 try:  # narration speed multiplier (1.0 = natural pace)
-    SPEED = min(1.4, max(0.8, float(os.environ.get("VOICE_SPEED", "1.2"))))
+    SPEED = min(1.4, max(0.8, float(os.environ.get("VOICE_SPEED", "1.1"))))
 except ValueError:
     SPEED = 1.2
 RATE = os.environ.get("TTS_RATE", f"{round((SPEED - 1) * 100):+d}%")
