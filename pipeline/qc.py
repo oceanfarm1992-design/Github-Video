@@ -34,7 +34,7 @@ def check(conn, c, topic):
             errs.append("video codec not h264")
         if not au or au[0]["codec_name"] != "aac":
             errs.append("audio missing/not aac")
-        if not 25 <= dur <= 62:
+        if not 25 <= dur <= 60:  # Facebook Reels max 60 s
             errs.append(f"duration {dur:.0f}s out of range")
     except Exception as e:
         errs.append(f"probe failed: {e}")

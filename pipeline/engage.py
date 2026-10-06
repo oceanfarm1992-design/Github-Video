@@ -139,7 +139,7 @@ def ai_replies(conn, title, facts, comments):
         "hate, unclear comments, and comments that need no answer (e.g. 'first').\n"
         "Return ONLY a JSON array: [{\"id\": \"<id>\", \"action\": \"reply\"|\"skip\", \"reply\": \"<text>\"}]\n\n"
         "Comments:\n" + lines)
-    out = llm.call_json(conn, prompt, max_tokens=300 + 90 * len(comments))
+    out = llm.call_json(conn, prompt, max_tokens=300 + 90 * len(comments), cache=False)  # comments = personal data
     res = {}
     for it in out if isinstance(out, list) else []:
         if isinstance(it, dict) and it.get("action") == "reply" and valid_reply(it.get("reply")):

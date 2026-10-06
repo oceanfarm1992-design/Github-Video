@@ -95,16 +95,20 @@ class EngageTests(unittest.TestCase):
             {"comment_id": "c4", "author_id": "u9", "author_name": "Me", "body": "thanks all", "is_owner": True},
             {"comment_id": "c5", "author_id": "u2", "author_name": "B", "body": "also nice video", "is_owner": False},
         ]
-        sent = []
+        sent, cache_flags = [], []
+
+        def fake_llm(conn, prompt, max_tokens=0, cache=True):
+            cache_flags.append(cache)
+            return [{"id": "c2", "action": "reply", "reply": "Yes - it's open-weight, per the announcement."},
+                    {"id": "c5", "action": "reply", "reply": "Thank you!"}]
+
         patches = {
             (supa, "configured"): fake.configured, (supa, "select"): fake.select, (supa, "upsert"): fake.upsert,
             (supa, "insert_once"): fake.insert_once, (supa, "update"): fake.update, (supa, "delete"): fake.delete,
             (engage, "youtube_token"): lambda: "tok", (engage, "yt_own_channel"): lambda t: "me",
             (engage, "yt_comments"): lambda *a: iter(comments),
             (engage, "yt_reply"): lambda tok, cid, text: sent.append((cid, text)),
-            (engage.llm, "call_json"): lambda conn, prompt, max_tokens=0: [
-                {"id": "c2", "action": "reply", "reply": "Yes - it's open-weight, per the announcement."},
-                {"id": "c5", "action": "reply", "reply": "Thank you!"}],
+            (engage.llm, "call_json"): fake_llm,
         }
         engage.REPLY_DELAY = (0, 0)
         olds = {k: getattr(*k) for k in patches}
@@ -121,6 +125,7 @@ class EngageTests(unittest.TestCase):
         self.assertEqual(sent[1][0], "c2")
         self.assertEqual(len(sent), 2)  # c3 spam, c4 own, c5 same author as c2 -> no reply
         self.assertEqual(again["replies"], 0)
+        self.assertTrue(cache_flags and not any(cache_flags))  # comments must never be cached (public state DB)
         status = {e["comment_id"]: e["status"] for e in fake.t["comment_events"]}
         self.assertEqual(status, {"c1": "replied", "c2": "replied", "c3": "skipped", "c4": "skipped", "c5": "skipped"})
 

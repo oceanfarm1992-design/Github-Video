@@ -30,7 +30,8 @@ def main():
         elif "--dry-run" in sys.argv:
             print(f"would set {name}")
         else:
-            subprocess.run(["gh", "secret", "set", name, "--body", env[name]], check=True, capture_output=True)
+            # value via stdin, never argv (argv is visible to other processes)
+            subprocess.run(["gh", "secret", "set", name], input=env[name], text=True, check=True, capture_output=True)
             print(f"set    {name}")
 
 

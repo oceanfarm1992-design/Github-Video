@@ -23,6 +23,7 @@ log = logging.getLogger("render")
 W, H = 1080, 1920
 WPS = 2.6  # spoken words/sec, only used when TTS is unavailable
 PAD = 0.4  # seconds of breathing room after each narrated scene
+MAX_SECONDS = 58.0  # Facebook Reels limit is 60 s
 VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewMultilingualNeural")
 try:  # narration speed multiplier (1.0 = natural pace)
     SPEED = min(1.4, max(0.8, float(os.environ.get("VOICE_SPEED", "1.1"))))
@@ -209,11 +210,16 @@ def render(content, topic=None):
         scenes = [(t, dur + PAD) for t, (_, dur) in zip(texts, clips)]
     else:
         scenes = [(t, max(3.0, len(t.split()) / WPS + 0.6)) for t in texts]
+    # Facebook Reels max out at 60 s: drop the last middle beat(s) instead of failing the whole video
+    while sum(d for _, d in scenes) > MAX_SECONDS and len(scenes) > 3:
+        del scenes[-2]
+        if clips:
+            del clips[-2]
     total = sum(d for _, d in scenes)
     if total < 30:  # pad the last scene (silence) to the 30s floor
         scenes[-1] = (scenes[-1][0], scenes[-1][1] + 30 - total)
         total = 30.0
-    if total > 58:
+    if total > MAX_SECONDS:
         raise RuntimeError(f"script too long for a Short: {total:.0f}s")
 
     srt(scenes, out / "video" / f"{h}.srt")

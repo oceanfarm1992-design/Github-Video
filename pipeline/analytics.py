@@ -3,7 +3,7 @@ import json
 import logging
 
 from . import config, db
-from .http import get_json
+from .http import request
 from .publish import youtube_token
 
 log = logging.getLogger("analytics")
@@ -20,8 +20,10 @@ def collect(conn):
     for i in range(0, len(posts), 50):
         chunk = posts[i:i + 50]
         ids = ",".join(p["post_id"] for p in chunk)
-        data, _ = get_json(conn, f"https://www.googleapis.com/youtube/v3/videos?part=statistics&id={ids}",
-                           {"Authorization": f"Bearer {token}"})
+        # uncached on purpose: authenticated responses must not land in the public state database
+        _, _, body = request(f"https://www.googleapis.com/youtube/v3/videos?part=statistics&id={ids}",
+                             headers={"Authorization": f"Bearer {token}"})
+        data = json.loads(body)
         by_id = {it["id"]: it["statistics"] for it in data.get("items", [])}
         for p in chunk:
             s = by_id.get(p["post_id"])

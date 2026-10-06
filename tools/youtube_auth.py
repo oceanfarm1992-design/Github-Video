@@ -63,7 +63,8 @@ def main():
         return
     for name, val in (("YOUTUBE_CLIENT_ID", cfg["client_id"]), ("YOUTUBE_CLIENT_SECRET", cfg["client_secret"]),
                       ("YOUTUBE_REFRESH_TOKEN", rt)):
-        subprocess.run(["gh", "secret", "set", name, "--body", val], check=True, capture_output=True)
+        # value via stdin, never argv (argv is visible to other processes)
+        subprocess.run(["gh", "secret", "set", name], input=val, text=True, check=True, capture_output=True)
         print("set secret", name)
 
 

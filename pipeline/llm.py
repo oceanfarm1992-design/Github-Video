@@ -8,13 +8,15 @@ from .generate import PRICE, _budget
 from .http import request
 
 
-def call_json(conn, prompt, max_tokens=900):
+def call_json(conn, prompt, max_tokens=900, cache=True):
     """Returns parsed JSON (list or dict) or None when disabled, over budget, or unparsable.
-    Results are cached by prompt hash; spend is recorded against the daily budget."""
+    Results are cached by prompt hash; spend is recorded against the daily budget.
+    cache=False for prompts/answers holding personal data (e.g. follower comments): the SQLite
+    state is pushed to the PUBLIC `data` branch, so such results must never be stored there."""
     if not config.ANTHROPIC_API_KEY:
         return None
     key = db.sha(config.LLM_MODEL + prompt)
-    cached = conn.execute("SELECT response FROM llm_cache WHERE key=?", (key,)).fetchone()
+    cached = conn.execute("SELECT response FROM llm_cache WHERE key=?", (key,)).fetchone() if cache else None
     if cached:
         return json.loads(cached["response"])
     pin, pout = PRICE.get(config.LLM_MODEL, (3.0, 15.0))
@@ -36,5 +38,6 @@ def call_json(conn, prompt, max_tokens=900):
     if not m:
         return None
     out = json.loads(m.group(0))
-    conn.execute("INSERT OR REPLACE INTO llm_cache VALUES (?,?,?,?)", (key, json.dumps(out), cost, time.time()))
+    if cache:
+        conn.execute("INSERT OR REPLACE INTO llm_cache VALUES (?,?,?,?)", (key, json.dumps(out), cost, time.time()))
     return out
