@@ -1,0 +1,99 @@
+name: pipeline
+
+on:
+  schedule:
+    - cron: "17 * * * *"      # hourly: collect cheap metadata
+    - cron: "43 */4 * * *"    # every 4h: research + score candidates
+    - cron: "5 14 * * *"      # daily: generate, render, QC, publish
+    - cron: "30 6 * * *"      # daily: analytics + learning
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "collect | research | produce | analyze | all"
+        default: collect
+
+# One writer at a time: the SQLite state is restored/saved per run.
+concurrency:
+  group: pipeline-state
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
+      MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
+      MAX_VIDEOS_PER_DAY: ${{ vars.MAX_VIDEOS_PER_DAY || '10' }}
+      MAX_RENDERS_PER_TOPIC: ${{ vars.MAX_RENDERS_PER_TOPIC || '2' }}
+      MIN_TOPIC_SCORE: ${{ vars.MIN_TOPIC_SCORE || '65' }}
+      GENERATE_SCORE: ${{ vars.GENERATE_SCORE || '80' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+
+      - name: Pick stage
+        id: stage
+        run: |
+          case "${{ github.event.schedule }}" in
+            "17 * * * *")    s=collect ;;
+            "43 */4 * * *")  s=research ;;
+            "5 14 * * *")    s=produce ;;
+            "30 6 * * *")    s=analyze ;;
+            *)               s="${{ github.event.inputs.stage || 'collect' }}" ;;
+          esac
+          echo "name=$s" >> "$GITHUB_OUTPUT"
+
+      - name: Restore state from `data` branch
+        run: |
+          mkdir -p data
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --depth=1 origin data
+            git show origin/data:pipeline.db > data/pipeline.db
+          fi
+
+      - name: Run stage
+        run: python -m pipeline ${{ steps.stage.outputs.name }}
+
+      - name: Save state to `data` branch
+        if: always()
+        run: |
+          [ -f data/pipeline.db ] || exit 0
+          sqlite3 data/pipeline.db "PRAGMA wal_checkpoint(TRUNCATE);" || true
+          cp data/pipeline.db "$RUNNER_TEMP/pipeline.db"
+          git config user.name "pipeline-bot"
+          git config user.email "pipeline-bot@users.noreply.github.com"
+          git checkout --orphan data-new
+          git rm -rf -q --cached . && git clean -fdxq
+          cp "$RUNNER_TEMP/pipeline.db" pipeline.db
+          git add pipeline.db
+          git commit -q -m "state $(date -u +%FT%TZ)"
+          git push -f origin data-new:data
+
+      - name: Upload rendered videos
+        if: steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all'
+        uses: actions/upload-artifact@v4
+        with:
+          name: videos-${{ github.run_id }}
+          path: |
+            out/video/*.mp4
+            out/video/*.srt
+          retention-days: 7
+          if-no-files-found: ignore

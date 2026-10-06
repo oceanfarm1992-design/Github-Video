@@ -1,0 +1,37 @@
+"""FILTER: deterministic relevance + dedupe (URL, repo id, title similarity, content hash)."""
+import difflib
+import json
+import re
+
+from . import config, db
+
+
+def _norm(t):
+    return re.sub(r"[^a-z0-9 ]", "", t.lower())
+
+
+def relevant(row):
+    raw = json.loads(row["raw"] or "{}")
+    blob = f"{row['title']} {raw.get('description') or ''} {' '.join(raw.get('topics', []))}".lower()
+    return row["source"] in ("arxiv", "huggingface") or any(k in blob for k in config.AI_KEYWORDS)
+
+
+def run(conn):
+    seen = conn.execute(
+        "SELECT title,content_hash FROM topics WHERE status NOT IN ('DISCOVERED','SKIPPED')").fetchall()
+    hashes = {r["content_hash"] for r in seen}
+    titles = [_norm(r["title"]) for r in seen]
+    kept = skipped = 0
+    for row in conn.execute("SELECT * FROM topics WHERE status='DISCOVERED'").fetchall():
+        nt = _norm(row["title"])
+        dup = row["content_hash"] in hashes or any(
+            difflib.SequenceMatcher(None, nt, t).ratio() > 0.88 for t in titles[-400:])
+        if dup or not relevant(row):
+            db.set_status(conn, row["id"], "SKIPPED", "duplicate" if dup else "irrelevant")
+            skipped += 1
+        else:
+            db.set_status(conn, row["id"], "FILTERED")
+            hashes.add(row["content_hash"])
+            titles.append(nt)
+            kept += 1
+    return kept, skipped

@@ -1,0 +1,2 @@
+Pillow>=10.0
+edge-tts>=6.1   # optional free TTS; pipeline falls back to silent audio if unavailable
