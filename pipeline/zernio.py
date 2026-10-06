@@ -67,25 +67,29 @@ def publish_reel(platform, c, video_url):
     }
     post = _call("/posts", body).get("post", {})
     plat = next((p for p in post.get("platforms", []) if p.get("platform") == platform), {})
-    if plat.get("status") not in (None, "published", "publishing", "pending"):
+    # "processing"/"scheduled"/"publishing" are normal in-flight states; only explicit failures raise.
+    if plat.get("status") in ("failed", "error", "rejected") or (plat.get("errorMessage") and plat.get("status") != "published"):
         raise RuntimeError(f"zernio {platform}: {plat.get('errorMessage') or plat.get('status')}")
     pid = _first(plat, "platformPostId") or post.get("_id")
+    if not pid:
+        raise RuntimeError(f"zernio {platform}: no post id in response")
     try:
-        create_automation(platform, acct, pid, c)
+        create_automation(platform, acct, _first(plat, "platformPostId"), post.get("_id"), c)
     except Exception as e:  # posting succeeded; automation can be re-created in the Zernio dashboard
         log.warning("comment automation for %s failed: %s", pid, e)
     return pid, plat.get("platformPostUrl", "")
 
 
-def create_automation(platform, acct, platform_post_id, c):
+def create_automation(platform, acct, platform_post_id, zernio_post_id, c):
+    """Scope to the live platform post if known, else to the Zernio post id (pending posts)."""
     cta = c.get("_cta")
-    if not cta or not platform_post_id:
+    if not cta or not (platform_post_id or zernio_post_id):
         return
-    _call("/comment-automations", {
+    scope = {"platformPostId": platform_post_id} if platform_post_id else {"postId": zernio_post_id}
+    _call("/comment-automations", {**scope,
         "profileId": _first(acct, "profileId") or (acct.get("profile") or {}).get("_id") or acct.get("profile"),
         "accountId": acct["_id"],
         "name": f"{platform}:{c['title'][:40]}:{cta['keyword']}",
-        "platformPostId": platform_post_id,
         "keywords": [cta["keyword"]],
         "matchMode": "word",
         "dmMessage": cta["response"],
