@@ -90,6 +90,16 @@ jobs:
           pip install torch==2.8.0+cpu torchaudio==2.8.0+cpu --index-url https://download.pytorch.org/whl/cpu
           pip install "styletts2-voice-clone[styletts2] @ git+https://github.com/oceanfarm1992-design/styletts2-voice-clone.git"
 
+      - name: Diagnose voice token (never prints the value)
+        if: ${{ steps.stage.outputs.name == 'preview' && env.VOICE_REPO_PAT != '' }}
+        continue-on-error: true
+        run: |
+          t="$VOICE_REPO_PAT"
+          ws=no; [[ "$t" =~ [[:space:]] ]] && ws=yes
+          echo "length=${#t} type=${t:0:4} whitespace=$ws repo=$VOICE_REF_REPO"
+          curl -s -o /dev/null -w "contents HTTP %{http_code}
+" -H "Authorization: Bearer $t"             -H "Accept: application/vnd.github.raw+json"             "https://api.github.com/repos/$VOICE_REF_REPO/contents/reference_voice.mp3"
+
       - name: Restore state from `data` branch
         run: |
           mkdir -p data
