@@ -25,9 +25,9 @@ WPS = 2.6  # spoken words/sec, only used when TTS is unavailable
 PAD = 0.4  # seconds of breathing room after each narrated scene
 VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewMultilingualNeural")
 try:  # narration speed multiplier (1.0 = natural pace)
-    SPEED = min(1.4, max(0.8, float(os.environ.get("VOICE_SPEED", "1.12"))))
+    SPEED = min(1.4, max(0.8, float(os.environ.get("VOICE_SPEED", "1.2"))))
 except ValueError:
-    SPEED = 1.12
+    SPEED = 1.2
 RATE = os.environ.get("TTS_RATE", f"{round((SPEED - 1) * 100):+d}%")
 
 
@@ -97,21 +97,30 @@ def clone_enabled():
         return False
 
 
-def clone_style():
-    """Speaking-style clip in the voice reference repo + how closely to follow it (beta)."""
-    ref = os.environ.get("VOICE_STYLE_REF", "").strip() or None
+def _env_float(name, default, lo, hi):
     try:
-        beta = min(1.0, max(0.0, float(os.environ.get("VOICE_STYLE_BETA", "0.2"))))
+        return min(hi, max(lo, float(os.environ.get(name, default))))
     except ValueError:
-        beta = 0.2
-    return ref, beta
+        return default
+
+
+def clone_style():
+    """Speaking-style clip in the voice reference repo, how closely to follow it (beta: 0 = copy
+    exactly) and expressiveness (StyleTTS2 embedding_scale)."""
+    ref = os.environ.get("VOICE_STYLE_REF", "").strip() or None
+    return (ref, _env_float("VOICE_STYLE_BETA", 0.0, 0.0, 1.0),
+            _env_float("VOICE_EXPRESSIVENESS", 1.5, 0.5, 3.0))
+
+
+def style_key():
+    style_ref, beta, scale = clone_style()
+    return f"{style_ref}-{beta}-{scale}" if style_ref else ""
 
 
 def voice_id():
     if not clone_enabled():
         return VOICE + RATE
-    style_ref, beta = clone_style()
-    return f"clone-styletts2-{SPEED}" + (f"-{style_ref}-{beta}" if style_ref else "")
+    return f"clone-styletts2-{SPEED}" + (f"-{style_key()}" if style_key() else "")
 
 
 def speech_text(t):
@@ -124,15 +133,16 @@ def speech_text(t):
 
 def narrate_clone(texts, out_dir):
     from voiceclone import synthesize
-    style_ref, beta = clone_style()
-    style = f"{style_ref}{beta}" if style_ref else ""
+    style_ref, beta, scale = clone_style()
+    style = style_key()
     clips = []
     for t in texts:
         p = out_dir / f"{db.sha(f'clone{SPEED}{style}' + t)[:24]}.wav"
         if not p.exists():
             raw = out_dir / f"{db.sha(f'clone{style}' + t)[:24]}.raw.wav"
             if not raw.exists():
-                kw = {"style_ref_file": style_ref, "styletts2_beta": beta} if style_ref else {}
+                kw = {"style_ref_file": style_ref, "styletts2_beta": beta,
+                      "styletts2_embedding_scale": scale} if style_ref else {}
                 used = synthesize(speech_text(t), str(raw), engine="styletts2",
                                   voice_ref_repo=os.environ["VOICE_REF_REPO"],
                                   voice_ref_cache=str(out_dir / ".voice_reference.mp3"), **kw)
