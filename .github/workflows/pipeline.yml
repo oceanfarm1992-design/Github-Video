@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "collect | research | produce | draft | engage | preview | analyze | all"
+        description: "collect | research | produce | draft | engage | preview | zernio | analyze | all"
         default: collect
       max_videos:
         description: "Override MAX_VIDEOS_PER_DAY for this run (optional)"
