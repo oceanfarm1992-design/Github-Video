@@ -38,6 +38,14 @@ class Tests(unittest.TestCase):
         kept, skipped = filt.run(self.conn)
         self.assertEqual((kept, skipped), (0, 2))
 
+    def test_curated_rss_items_are_relevant_and_reopened(self):
+        discover.add(self.conn, title="Introducing our newest thing", source="rss:openai", url="https://x/n1",
+                     published_at=db.now_iso(), raw={"description": "a post"})
+        tid = self.conn.execute("SELECT id FROM topics").fetchone()[0]
+        db.set_status(self.conn, tid, "SKIPPED", "irrelevant")
+        filt.run(self.conn)
+        self.assertEqual(self.conn.execute("SELECT status FROM topics").fetchone()[0], "FILTERED")
+
     def test_backoff_then_failed(self):
         topic(self.conn, "x/y", "https://github.com/x/y", repo_id="gh:2")
         tid = self.conn.execute("SELECT id FROM topics").fetchone()[0]

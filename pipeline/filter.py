@@ -13,10 +13,16 @@ def _norm(t):
 def relevant(row):
     raw = json.loads(row["raw"] or "{}")
     blob = f"{row['title']} {raw.get('description') or ''} {' '.join(raw.get('topics', []))}".lower()
-    return row["source"] in ("arxiv", "huggingface") or any(k in blob for k in config.AI_KEYWORDS)
+    if row["source"] in ("arxiv", "huggingface") or row["source"].startswith("rss:"):
+        return True  # curated AI sources: every item is on-topic
+    return any(k in blob for k in config.AI_KEYWORDS)
 
 
 def run(conn):
+    # self-heal: re-open items skipped as irrelevant by an older, stricter rule
+    for r in conn.execute("SELECT * FROM topics WHERE status='SKIPPED' AND error='irrelevant'").fetchall():
+        if relevant(r):
+            db.set_status(conn, r["id"], "DISCOVERED")
     seen = conn.execute(
         "SELECT title,content_hash FROM topics WHERE status NOT IN ('DISCOVERED','SKIPPED')").fetchall()
     hashes = {r["content_hash"] for r in seen}
