@@ -82,8 +82,50 @@ def _duration(path):
     return float(r.stdout.strip())
 
 
+def clone_enabled():
+    """Own-voice cloning (StyleTTS2 via the styletts2-voice-clone package) when configured + installed."""
+    if not (os.environ.get("VOICE_REF_REPO") and os.environ.get("VOICE_REPO_PAT")):
+        return False
+    try:
+        import voiceclone  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def voice_id():
+    return "clone-styletts2" if clone_enabled() else VOICE + RATE
+
+
+def speech_text(t):
+    """StyleTTS2 treats ALL-CAPS as emphasis/spelling; say the CTA keywords naturally."""
+    for k, v in (("GITHUB", "GitHub"), ("TOOL", "tool"), ("CODE", "code"), ("DOCS", "docs"),
+                 ("DEMO", "demo"), ("SOURCE", "source")):
+        t = t.replace(k, v)
+    return t
+
+
+def narrate_clone(texts, out_dir):
+    from voiceclone import synthesize
+    clips = []
+    for t in texts:
+        p = out_dir / f"{db.sha('clone' + t)[:24]}.wav"
+        if not p.exists():
+            used = synthesize(speech_text(t), str(p), engine="styletts2",
+                              voice_ref_repo=os.environ["VOICE_REF_REPO"],
+                              voice_ref_cache=str(out_dir / ".voice_reference.mp3"))
+            log.info("voice engine: %s", used)
+        clips.append((p, _duration(p)))
+    return clips
+
+
 def narrate(texts, out_dir):
-    """One cached mp3 per scene. Returns list of (path, seconds) or None if TTS is unavailable."""
+    """One cached clip per scene. Own-voice clone first, then Edge neural TTS, else None (silent)."""
+    if clone_enabled():
+        try:
+            return narrate_clone(texts, out_dir)
+        except Exception as e:  # never mix two voices in one video: redo every scene with Edge
+            log.warning("voice clone failed (%s); falling back to Edge TTS", e)
     clips = []
     try:
         for t in texts:
@@ -117,7 +159,7 @@ def render(content, topic=None):
     for sub in ("video", "audio", "assets"):
         (out / sub).mkdir(parents=True, exist_ok=True)
     texts = scenes_for(content["script"])
-    h = db.sha(content["script"] + content["title"] + VOICE)[:24]
+    h = db.sha(content["script"] + content["title"] + voice_id())[:24]
     mp4 = out / "video" / f"{h}.mp4"
     if mp4.exists():
         return str(mp4)  # never regenerate an unchanged asset

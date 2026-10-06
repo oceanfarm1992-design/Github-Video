@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "collect | research | produce | engage | analyze | all"
+        description: "collect | research | produce | engage | preview | analyze | all"
         default: collect
 
 # One writer at a time: the SQLite state is restored/saved per run.
@@ -37,6 +37,8 @@ jobs:
       META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      VOICE_REPO_PAT: ${{ secrets.VOICE_REPO_PAT }}
+      VOICE_REF_REPO: ${{ vars.VOICE_REF_REPO }}
       WATERMARK_TEXT: ${{ vars.WATERMARK_TEXT }}
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
       MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
@@ -70,6 +72,24 @@ jobs:
           esac
           echo "name=$s" >> "$GITHUB_OUTPUT"
 
+      - name: Cache voice-clone models
+        if: ${{ env.VOICE_REPO_PAT != '' && (steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview') }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/torch
+            ~/nltk_data
+          key: voice-models-v1
+
+      - name: Install voice cloning (own voice)
+        if: ${{ env.VOICE_REPO_PAT != '' && (steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview') }}
+        continue-on-error: true   # a failed install falls back to Edge TTS
+        run: |
+          sudo apt-get install -y -qq espeak-ng libsndfile1
+          pip install torch==2.8.0+cpu torchaudio==2.8.0+cpu --index-url https://download.pytorch.org/whl/cpu
+          pip install "styletts2-voice-clone[styletts2] @ git+https://github.com/oceanfarm1992-design/styletts2-voice-clone.git"
+
       - name: Restore state from `data` branch
         run: |
           mkdir -p data
@@ -97,7 +117,7 @@ jobs:
           git push -f origin data-new:data
 
       - name: Upload rendered videos
-        if: steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all'
+        if: steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview'
         uses: actions/upload-artifact@v4
         with:
           name: videos-${{ github.run_id }}
