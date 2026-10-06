@@ -74,6 +74,25 @@ def gh_headers():
     return h
 
 
+def page_description(url):
+    """The page's own og:description / meta description (first-party text), or None."""
+    import html as html_lib
+    import re
+    try:
+        _, _, body = request(url, headers={"Accept": "text/html"}, attempts=2)
+    except RuntimeError:
+        return None
+    page = body[:300_000].decode("utf-8", "replace")
+    q = r"""["']"""
+    for pat in (rf'<meta[^>]+property={q}og:description{q}[^>]+content={q}([^"\']+)',
+                rf'<meta[^>]+content={q}([^"\']+){q}[^>]+property={q}og:description{q}',
+                rf'<meta[^>]+name={q}description{q}[^>]+content={q}([^"\']+)'):
+        m = re.search(pat, page, re.I)
+        if m:
+            return re.sub(r"\s+", " ", html_lib.unescape(m.group(1))).strip()[:400] or None
+    return None
+
+
 def url_ok(url):
     """Deterministic URL validation (no LLM). HEAD, falling back to GET.
     401/403/429 mean the server answered but blocks bots (e.g. Cloudflare): the URL exists, so it counts."""

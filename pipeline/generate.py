@@ -80,7 +80,9 @@ def llm_rewrite(conn, row, claims):
         "The hook MUST be a question addressed to the viewer (start with 'Do you want', 'Want' or 'Looking for'), "
         "under 14 words, about the need this project meets, e.g. 'Do you want to build AI videos on your own PC?'. "
         "Only mention free, local or open-source if the facts say so. The first beat must introduce the project by "
-        "name ('Meet NAME, ...'). Use ONLY the facts below. Do not add statistics, features or links. "
+        "name ('Meet NAME, ...'). Use ONLY the facts below: never describe purpose, features, quality or "
+        "capabilities that are not stated in them, and never repeat the same fact. If the facts are thin, "
+        "return fewer beats (minimum 2). Do not add statistics or links. "
         "Each beat under 22 words.\nTitle: " + row["title"] + "\nFacts:\n- " + "\n- ".join(facts))
     key = db.sha(config.LLM_MODEL + prompt)
     cached = conn.execute("SELECT response FROM llm_cache WHERE key=?", (key,)).fetchone()
@@ -109,7 +111,7 @@ def llm_rewrite(conn, row, claims):
         return None
     if not out["hook"].strip().endswith("?"):
         return None  # the hook must be a question; fall back to the template
-    result = {"hook": out["hook"], "beats": [str(b) for b in out["beats"][:4]]}
+    result = {"hook": out["hook"], "beats": [str(b) for b in out["beats"][:max(2, min(4, len(facts) + 1))]]}
     conn.execute("INSERT OR REPLACE INTO llm_cache VALUES (?,?,?,?)",
                  (key, json.dumps(result), cost, time.time()))
     return result

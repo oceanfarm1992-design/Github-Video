@@ -4,7 +4,7 @@ import logging
 import time
 
 from . import db
-from .http import get_json, gh_headers, url_ok
+from .http import get_json, gh_headers, page_description, url_ok
 
 log = logging.getLogger("research")
 
@@ -35,8 +35,10 @@ def research_one(conn, row):
         if raw.get("pipeline_tag"):
             claims.append({"text": f"Task: {raw['pipeline_tag']}.", "source": row["url"]})
     else:
+        if not summary and row["source"] != "arxiv":
+            summary = page_description(row["url"]) or ""  # first-party text from the page itself
         if summary:
-            claims.append({"text": summary[:240], "source": row["url"]})
+            claims.append({"text": summary[:300], "source": row["url"]})
         if raw.get("hn_score"):
             claims.append({"text": f"Trending on Hacker News ({raw['hn_score']} points).", "source": row["url"]})
         claims.append({"text": f"Reported by {row['source'].split(':')[-1]}.", "source": row["url"]})
