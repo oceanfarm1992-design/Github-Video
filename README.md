@@ -23,6 +23,7 @@ Every stage resumes from DB state; failures retry with exponential backoff (10 m
 2. Settings â†’ Actions â†’ General â†’ Workflow permissions: **Read and write** (needed to save state).
 3. Optional secrets (Settings â†’ Secrets and variables â†’ Actions). Without them the pipeline still runs, using template scripts and marking uploads `WAITING_FOR_API`:
    - `ANTHROPIC_API_KEY` â€“ optional cheap-model script rewrite (hard-capped by the budget variables)
+   - `ZERNIO_API_KEY` - preferred for Facebook/Instagram: publishes Reels through [Zernio](https://docs.zernio.com) and creates a keyword -> DM comment automation per post (replaces the direct Meta credentials below and the built-in Meta DM replies; Zernio is a third-party service)
    - `META_PAGE_ID`, `META_PAGE_ACCESS_TOKEN`, `META_IG_USER_ID` – Facebook Page Reels + Instagram Reels (Meta Graph API; the IG account must be a Business/Creator account linked to the Page)
    - `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` â€“ YouTube Data API (Shorts upload)
 4. Optional variables: `DAILY_AI_BUDGET_USD`, `MAX_LLM_CALLS_PER_DAY`, `MAX_VIDEOS_PER_DAY`, `MAX_RENDERS_PER_TOPIC`, `MIN_TOPIC_SCORE`, `GENERATE_SCORE`.

@@ -106,7 +106,8 @@ def run(conn):
                 token = token or youtube_token()
                 own = own or yt_own_channel(token)
                 comments = list(yt_comments(p["post_id"], token, own))
-            elif p["platform"] in ("facebook", "instagram") and os.environ.get("META_PAGE_ACCESS_TOKEN"):
+            elif (p["platform"] in ("facebook", "instagram") and os.environ.get("META_PAGE_ACCESS_TOKEN")
+                  and not os.environ.get("ZERNIO_API_KEY")):  # with Zernio, its comment automations reply
                 comments = list(meta_comments(p["platform"], p["post_id"]))
             else:
                 continue

@@ -9,7 +9,7 @@ import os
 import time
 import urllib.parse
 
-from . import db
+from . import db, zernio
 from .http import request
 
 log = logging.getLogger("publish")
@@ -119,7 +119,11 @@ def platforms():
     out = {}
     if youtube_token_available():
         out["youtube"] = (False, None)
-    if os.environ.get("META_PAGE_ID") and os.environ.get("META_PAGE_ACCESS_TOKEN"):
+    if zernio.enabled():  # preferred for Facebook/Instagram when configured
+        for plat in ("facebook", "instagram"):
+            if zernio.available(plat):
+                out[plat] = (True, lambda c, url, plat=plat: zernio.publish_reel(plat, c, url))
+    elif os.environ.get("META_PAGE_ID") and os.environ.get("META_PAGE_ACCESS_TOKEN"):
         out["facebook"] = (True, facebook_reel)
         if os.environ.get("META_IG_USER_ID"):
             out["instagram"] = (True, instagram_reel)
@@ -139,6 +143,9 @@ def run(conn):
         "WHERE t.status IN ('READY','WAITING_FOR_API') AND c.status='qc_passed'").fetchall()
     n = 0
     for c in rows:
+        c = dict(c)
+        m = conn.execute("SELECT cta_keyword, response FROM cta_map WHERE video_id=?", (c["id"],)).fetchone()
+        c["_cta"] = {"keyword": m["cta_keyword"], "response": m["response"]} if m else None
         if not configured:
             db.set_status(conn, c["tid"], "WAITING_FOR_API", "no platform credentials")
             continue
