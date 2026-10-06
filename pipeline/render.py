@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import config, db, motion
+from . import browser, config, db, motion
 from .http import request
 
 log = logging.getLogger("render")
@@ -200,6 +200,10 @@ def render(content, topic=None):
         return str(mp4)  # never regenerate an unchanged asset
 
     card = fetch_image(image_url(topic), out / "assets") if topic else None
+    page_url = None
+    if topic and os.environ.get("PAGE_SCROLL", "1") != "0":
+        page_url = next((u for u in (topic["github_url"], topic["url"]) if browser.supported(u)), None)
+    page = browser.capture(page_url, out / "assets") if page_url else None
     clips = narrate(texts, out / "audio")
     if clips:
         scenes = [(t, dur + PAD) for t, (_, dur) in zip(texts, clips)]
@@ -236,7 +240,7 @@ def render(content, topic=None):
             "-movflags", "+faststart", str(mp4)]
     proc = subprocess.Popen(enc, stdin=subprocess.PIPE)
     try:
-        for raw in motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT")):
+        for raw in motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT"), page, page_url):
             proc.stdin.write(raw)
         proc.stdin.close()
         if proc.wait(timeout=600) != 0:

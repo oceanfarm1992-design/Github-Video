@@ -107,6 +107,20 @@ jobs:
           pip install torch==2.8.0+cpu torchaudio==2.8.0+cpu --index-url https://download.pytorch.org/whl/cpu
           pip install "styletts2-voice-clone[styletts2] @ git+https://github.com/oceanfarm1992-design/styletts2-voice-clone.git"
 
+      - name: Cache Chromium
+        if: ${{ steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview' || steps.stage.outputs.name == 'draft' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-v1
+
+      - name: Install Chromium (GitHub page scroll scenes)
+        if: ${{ steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview' || steps.stage.outputs.name == 'draft' }}
+        continue-on-error: true   # without it, videos fall back to the preview card
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
       - name: Restore state from `data` branch
         run: |
           mkdir -p data
