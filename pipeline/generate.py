@@ -24,8 +24,20 @@ def pick_cta(row):
     return "SOURCE", row["url"]
 
 
+def clean_claim(text, limit=140):
+    """Make a claim safe to show and speak: drop CJK/emoji/symbols the font and voice can't handle."""
+    text = re.sub(r"^Description:\s*", "", text)
+    kept = "".join(ch for ch in text if ch.isascii() or ch in "—–’‘“”…")
+    kept = re.sub(r"\s+", " ", kept).strip(" -|:,.")
+    if len(kept) < 0.6 * len(text.strip()) or len(kept) < 12:
+        return None  # mostly non-Latin text: not usable
+    if len(kept) > limit:
+        kept = kept[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+    return kept if kept[-1] in ".!?" else kept + "."
+
+
 def template_script(row, claims):
-    texts = [c["text"] for c in claims]
+    texts = [t for t in (clean_claim(c["text"]) for c in claims) if t]
     title = row["title"]
     short = title.split("/")[-1] if row["source"] == "github" else title
     hook = f"New on GitHub: {short}." if row["source"] == "github" else f"AI update: {short[:80]}"
@@ -43,7 +55,7 @@ def llm_rewrite(conn, row, claims):
     """Returns (hook, beats) or None. Skips (never exceeds) when budget/cap/key is missing."""
     if not config.ANTHROPIC_API_KEY:
         return None
-    facts = [c["text"] for c in claims]
+    facts = [t for t in (clean_claim(c["text"]) for c in claims) if t]
     prompt = (
         "Write a 35-second vertical-video script as JSON {\"hook\": str, \"beats\": [str, str, str]}. "
         "Use ONLY the facts below. Do not add statistics, features or links. Hook under 15 words; "

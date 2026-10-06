@@ -71,6 +71,13 @@ class Tests(unittest.TestCase):
         self.assertEqual(generate.pick_cta(row)[0], "GITHUB")
         self.assertEqual(generate.pick_cta({"github_url": None, "source": "arxiv", "url": "u"})[0], "DOCS")
 
+    def test_clean_claim_strips_cjk_and_emoji(self):
+        c = generate.clean_claim("Description: Answer me with HTML — an agent skill. 🐱 AI Agent 让智能体")
+        self.assertNotIn("让", c)
+        self.assertNotIn("Description", c)
+        self.assertIsNone(generate.clean_claim("让智能体用网页回答问题"))
+        self.assertLessEqual(len(generate.clean_claim("word " * 80)), 145)
+
     def test_llm_skipped_without_key(self):
         config.ANTHROPIC_API_KEY = ""
         self.assertIsNone(generate.llm_rewrite(self.conn, {"title": "t"}, []))
