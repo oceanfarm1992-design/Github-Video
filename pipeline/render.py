@@ -97,8 +97,21 @@ def clone_enabled():
         return False
 
 
+def clone_style():
+    """Speaking-style clip in the voice reference repo + how closely to follow it (beta)."""
+    ref = os.environ.get("VOICE_STYLE_REF", "").strip() or None
+    try:
+        beta = min(1.0, max(0.0, float(os.environ.get("VOICE_STYLE_BETA", "0.2"))))
+    except ValueError:
+        beta = 0.2
+    return ref, beta
+
+
 def voice_id():
-    return f"clone-styletts2-{SPEED}" if clone_enabled() else VOICE + RATE
+    if not clone_enabled():
+        return VOICE + RATE
+    style_ref, beta = clone_style()
+    return f"clone-styletts2-{SPEED}" + (f"-{style_ref}-{beta}" if style_ref else "")
 
 
 def speech_text(t):
@@ -111,15 +124,18 @@ def speech_text(t):
 
 def narrate_clone(texts, out_dir):
     from voiceclone import synthesize
+    style_ref, beta = clone_style()
+    style = f"{style_ref}{beta}" if style_ref else ""
     clips = []
     for t in texts:
-        p = out_dir / f"{db.sha(f'clone{SPEED}' + t)[:24]}.wav"
+        p = out_dir / f"{db.sha(f'clone{SPEED}{style}' + t)[:24]}.wav"
         if not p.exists():
-            raw = out_dir / f"{db.sha('clone' + t)[:24]}.raw.wav"
+            raw = out_dir / f"{db.sha(f'clone{style}' + t)[:24]}.raw.wav"
             if not raw.exists():
+                kw = {"style_ref_file": style_ref, "styletts2_beta": beta} if style_ref else {}
                 used = synthesize(speech_text(t), str(raw), engine="styletts2",
                                   voice_ref_repo=os.environ["VOICE_REF_REPO"],
-                                  voice_ref_cache=str(out_dir / ".voice_reference.mp3"))
+                                  voice_ref_cache=str(out_dir / ".voice_reference.mp3"), **kw)
                 log.info("voice engine: %s", used)
             # pitch-preserving speed-up (atempo)
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-filter:a",

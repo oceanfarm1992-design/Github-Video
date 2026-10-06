@@ -26,8 +26,9 @@ Every stage resumes from DB state; failures retry with exponential backoff (10 m
    - `ZERNIO_API_KEY` - preferred for Facebook/Instagram: publishes Reels through [Zernio](https://docs.zernio.com) and creates a keyword -> DM comment automation per post (replaces the direct Meta credentials below and the built-in Meta DM replies; Zernio is a third-party service)
    - `META_PAGE_ID`, `META_PAGE_ACCESS_TOKEN`, `META_IG_USER_ID` – Facebook Page Reels + Instagram Reels (Meta Graph API; the IG account must be a Business/Creator account linked to the Page)
    - `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` â€“ YouTube Data API (Shorts upload)
-4. Optional variables: `DAILY_AI_BUDGET_USD`, `MAX_LLM_CALLS_PER_DAY`, `MAX_VIDEOS_PER_DAY`, `MAX_RENDERS_PER_TOPIC`, `MIN_TOPIC_SCORE`, `GENERATE_SCORE`.
-5. Run **Actions â†’ pipeline â†’ Run workflow** once; schedules take over (hourly collect, 4-hourly research, daily produce/analyze).
+4. Daily mix: `DAILY_GITHUB_VIDEOS` (default 2) + `DAILY_NEWS_VIDEOS` (default 2), with score bars `GENERATE_SCORE` (80, GitHub) and `GENERATE_SCORE_NEWS` (65, news).
+5. Optional variables: `DAILY_AI_BUDGET_USD`, `MAX_LLM_CALLS_PER_DAY`, `MAX_VIDEOS_PER_DAY`, `MAX_RENDERS_PER_TOPIC`, `MIN_TOPIC_SCORE`, `GENERATE_SCORE`.
+6. Run **Actions â†’ pipeline â†’ Run workflow** once; schedules take over (hourly collect, 4-hourly research, daily produce/analyze).
 
 Notes for public repos:
 - No secrets are in the code; `.env` is git-ignored. Never print or commit tokens.

@@ -49,10 +49,15 @@ jobs:
       VOICE_REPO_PAT: ${{ secrets.VOICE_REPO_PAT }}
       VOICE_REF_REPO: ${{ vars.VOICE_REF_REPO }}
       VOICE_SPEED: ${{ vars.VOICE_SPEED || '1.12' }}
+      VOICE_STYLE_REF: ${{ vars.VOICE_STYLE_REF }}
+      VOICE_STYLE_BETA: ${{ vars.VOICE_STYLE_BETA || '0.2' }}
       WATERMARK_TEXT: ${{ vars.WATERMARK_TEXT }}
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
       MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
-      MAX_VIDEOS_PER_DAY: ${{ github.event.inputs.max_videos || vars.MAX_VIDEOS_PER_DAY || '10' }}
+      MAX_VIDEOS_PER_DAY: ${{ github.event.inputs.max_videos || vars.MAX_VIDEOS_PER_DAY || '4' }}
+      DAILY_GITHUB_VIDEOS: ${{ vars.DAILY_GITHUB_VIDEOS || '2' }}
+      DAILY_NEWS_VIDEOS: ${{ vars.DAILY_NEWS_VIDEOS || '2' }}
+      GENERATE_SCORE_NEWS: ${{ vars.GENERATE_SCORE_NEWS || '65' }}
       GENERATE_SOURCES: ${{ github.event.inputs.sources }}
       MAX_RENDERS_PER_TOPIC: ${{ vars.MAX_RENDERS_PER_TOPIC || '2' }}
       MIN_TOPIC_SCORE: ${{ vars.MIN_TOPIC_SCORE || '65' }}

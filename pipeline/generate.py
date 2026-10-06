@@ -1,4 +1,5 @@
 """GENERATE: deterministic template first; optional cheap-LLM rewrite under a hard budget."""
+import calendar
 import json
 import logging
 import os
@@ -117,22 +118,44 @@ def llm_rewrite(conn, row, claims):
     return result
 
 
-def videos_today(conn):
-    start = time.mktime(time.strptime(db.today(), "%Y-%m-%d")) - time.timezone
-    return conn.execute("SELECT COUNT(*) FROM contents WHERE created_at>=?", (start,)).fetchone()[0]
+def _day_start():
+    return calendar.timegm(time.strptime(db.today(), "%Y-%m-%d"))
+
+
+def kind(source):
+    return "github" if source == "github" else "news"
+
+
+def videos_today(conn, which=None):
+    rows = conn.execute(
+        "SELECT t.source FROM contents c JOIN topics t ON t.id=c.topic_id WHERE c.created_at>=?",
+        (_day_start(),)).fetchall()
+    return sum(1 for r in rows if which is None or kind(r["source"]) == which)
+
+
+def pick(rows, gh_room, news_room, min_gh, min_news):
+    """Top-scoring rows per category, within each category's remaining daily room and score bar."""
+    out, room, bar = [], {"github": gh_room, "news": news_room}, {"github": min_gh, "news": min_news}
+    for r in sorted(rows, key=lambda r: -r["score"]):
+        k = kind(r["source"])
+        if room[k] > 0 and r["score"] >= bar[k]:
+            out.append(r)
+            room[k] -= 1
+    return out
 
 
 def run(conn):
     room = config.MAX_VIDEOS_PER_DAY - videos_today(conn)
     if room <= 0:
         return 0
-    rows = conn.execute(
-        "SELECT * FROM topics WHERE status='QUEUED' AND score>=? AND renders<? ORDER BY score DESC",
-        (config.GENERATE_SCORE, config.MAX_RENDERS_PER_TOPIC)).fetchall()
+    rows = conn.execute("SELECT * FROM topics WHERE status='QUEUED' AND renders<?",
+                        (config.MAX_RENDERS_PER_TOPIC,)).fetchall()
     wanted = [s.strip() for s in os.environ.get("GENERATE_SOURCES", "").split(",") if s.strip()]
     if wanted:  # e.g. "rss,hn,arxiv" to make news-only videos
         rows = [r for r in rows if r["source"].split(":")[0] in wanted]
-    rows = rows[:room]
+    rows = pick(rows, config.DAILY_GITHUB_VIDEOS - videos_today(conn, "github"),
+                config.DAILY_NEWS_VIDEOS - videos_today(conn, "news"),
+                config.GENERATE_SCORE, min(config.GENERATE_SCORE, config.GENERATE_SCORE_NEWS))[:room]
     n = 0
     for row in rows:
         try:

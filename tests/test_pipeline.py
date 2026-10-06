@@ -46,6 +46,16 @@ class Tests(unittest.TestCase):
         filt.run(self.conn)
         self.assertEqual(self.conn.execute("SELECT status FROM topics").fetchone()[0], "FILTERED")
 
+    def test_daily_quota_picks_two_github_and_two_news(self):
+        mk = lambda src, sc: {"source": src, "score": sc}
+        rows = [mk("github", 90), mk("github", 85), mk("github", 82), mk("rss:aws-ml", 70), mk("hn", 68),
+                mk("arxiv", 66), mk("rss:openai", 40)]
+        got = generate.pick(rows, 2, 2, 80, 65)
+        self.assertEqual([(r["source"], r["score"]) for r in got],
+                         [("github", 90), ("github", 85), ("rss:aws-ml", 70), ("hn", 68)])
+        self.assertEqual(generate.pick(rows, 0, 1, 80, 65)[0]["source"], "rss:aws-ml")
+        self.assertEqual(generate.pick(rows, 2, 2, 95, 99), [])
+
     def test_backoff_then_failed(self):
         topic(self.conn, "x/y", "https://github.com/x/y", repo_id="gh:2")
         tid = self.conn.execute("SELECT id FROM topics").fetchone()[0]
