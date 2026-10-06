@@ -11,13 +11,12 @@ import os
 import re
 import shutil
 import subprocess
-import textwrap
 import urllib.parse
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image
 
-from . import config, db
+from . import config, db, motion
 from .http import request
 
 log = logging.getLogger("render")
@@ -26,15 +25,6 @@ WPS = 2.6  # spoken words/sec, only used when TTS is unavailable
 PAD = 0.4  # seconds of breathing room after each narrated scene
 VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewMultilingualNeural")
 RATE = os.environ.get("TTS_RATE", "+4%")
-
-
-def _font(size):
-    for name in ("DejaVuSans-Bold.ttf", "arialbd.ttf", "Arial Bold.ttf", "LiberationSans-Bold.ttf"):
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            continue
-    return ImageFont.load_default(size=size)
 
 
 # ------------------------------------------------------------------ images
@@ -78,41 +68,6 @@ def fetch_image(url, out_dir):
     except Exception as e:
         log.info("image unavailable (%s): %s", url, e)
         return None
-
-
-def _card(path, width=960):
-    img = Image.open(path).convert("RGB")
-    h = min(int(img.height * width / img.width), 760)
-    img = ImageOps.fit(img, (width, h), Image.LANCZOS)
-    mask = Image.new("L", img.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, img.width, img.height], 28, fill=255)
-    out = Image.new("RGBA", img.size)
-    out.paste(img, (0, 0), mask)
-    return out
-
-
-def frame(text, idx, total, title, path, card=None):
-    img = Image.new("RGB", (W, H), (14, 16, 28))
-    d = ImageDraw.Draw(img)
-    for y in range(H):  # cheap vertical gradient
-        c = int(14 + 30 * y / H)
-        d.line([(0, y), (W, y)], fill=(c, c + 4, c + 22))
-    d.rectangle([60, 120, 60 + int((W - 120) * (idx + 1) / total), 132], fill=(90, 160, 255))
-    d.text((60, 180), title[:40], font=_font(46), fill=(150, 175, 220))
-    size = 66 if len(text) < 90 else 54
-    lines = textwrap.wrap(text, width=int(1000 / (size * 0.55)))
-    text_h = len(lines) * int(size * 1.3)
-    c = _card(card) if card is not None else None
-    block = (c.height + 80 if c else 0) + text_h
-    y = max(260, (H - block) // 2 - 40)  # vertically centre the card + text block
-    if c is not None:
-        d.rounded_rectangle([60 - 6, y - 6, 60 + c.width + 6, y + c.height + 6], 32, fill=(60, 80, 130))
-        img.paste(c, (60, y), c)
-        y += c.height + 80
-    for ln in lines:
-        d.text((60, y), ln, font=_font(size), fill=(255, 255, 255))
-        y += int(size * 1.3)
-    img.save(path)
 
 
 # ------------------------------------------------------------------- audio
@@ -180,36 +135,40 @@ def render(content, topic=None):
     if total > 58:
         raise RuntimeError(f"script too long for a Short: {total:.0f}s")
 
-    frames = []
-    for i, (text, _) in enumerate(scenes):
-        key = db.sha(f"{text}|{content['title']}|{card}|{i}|{len(scenes)}")[:24]
-        p = out / "assets" / f"f_{key}.png"
-        if not p.exists():
-            frame(text, i, len(scenes), content["title"], p, card)
-        frames.append(p)
     srt(scenes, out / "video" / f"{h}.srt")
-    lst = out / "video" / f"{h}.txt"
-    lines = []
-    for p, (_, dur) in zip(frames, scenes):
-        lines += [f"file '{p.resolve().as_posix()}'", f"duration {dur:.3f}"]
-    lines.append(f"file '{frames[-1].resolve().as_posix()}'")
-    lst.write_text("\n".join(lines))
 
-    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst)]
+    # 1) narration track, each clip padded to its scene length so audio and slides stay in lockstep
+    audio = None
     if clips:
+        audio = out / "audio" / f"{h}.m4a"
+        cmd = ["ffmpeg", "-y", "-loglevel", "error"]
         for p, _ in clips:
             cmd += ["-i", str(p)]
-        # pad each clip to its scene length so audio and slides stay in lockstep, then join
-        parts = "".join(f"[{i + 1}:a]aresample=44100,apad=whole_dur={scenes[i][1]:.3f}[a{i}];" for i in range(len(clips)))
+        parts = "".join(f"[{i}:a]aresample=44100,apad=whole_dur={scenes[i][1]:.3f}[a{i}];" for i in range(len(clips)))
         fc = parts + "".join(f"[a{i}]" for i in range(len(clips))) + f"concat=n={len(clips)}:v=0:a=1,apad[aout]"
-        cmd += ["-filter_complex", fc, "-map", "0:v", "-map", "[aout]"]
-    else:
-        cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
-    cmd += ["-t", f"{total:.3f}", "-vf", f"fps=30,scale={W}:{H},format=yuv420p", "-c:v", "libx264",
-            "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
+        cmd += ["-filter_complex", fc, "-map", "[aout]", "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "128k", str(audio)]
+        subprocess.run(cmd, check=True, timeout=300)
+
+    # 2) animated frames piped straight into the encoder (fade in/out to black, audio fades too)
+    fade = f"fade=t=in:st=0:d=0.4,fade=t=out:st={total - 0.5:.3f}:d=0.5,format=yuv420p"
+    enc = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
+           "-r", str(motion.FPS), "-i", "-"]
+    enc += ["-i", str(audio)] if audio else ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
+    enc += ["-t", f"{total:.3f}", "-vf", fade, "-af", f"afade=t=out:st={total - 0.5:.3f}:d=0.5",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
             "-movflags", "+faststart", str(mp4)]
-    subprocess.run(cmd, check=True, timeout=600)
-    lst.unlink(missing_ok=True)
+    proc = subprocess.Popen(enc, stdin=subprocess.PIPE)
+    try:
+        for raw in motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT")):
+            proc.stdin.write(raw)
+        proc.stdin.close()
+        if proc.wait(timeout=600) != 0:
+            raise RuntimeError("ffmpeg encode failed")
+    except BrokenPipeError:
+        raise RuntimeError("ffmpeg closed the pipe early")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
     return str(mp4)
 
 

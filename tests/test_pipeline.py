@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "t.db")
 
-from pipeline import config, db, discover, filter as filt, engage, generate, score  # noqa: E402
+from pipeline import config, db, discover, filter as filt, engage, generate, motion, score  # noqa: E402
 
 
 def topic(conn, title, url, source="github", **kw):
@@ -77,6 +77,24 @@ class Tests(unittest.TestCase):
         self.assertNotIn("Description", c)
         self.assertIsNone(generate.clean_claim("让智能体用网页回答问题"))
         self.assertLessEqual(len(generate.clean_claim("word " * 80)), 145)
+
+    def test_easing_bounds_and_monotonic(self):
+        xs = [i / 10 for i in range(11)]
+        for f in (motion.ease_out, motion.ease_in_out):
+            ys = [f(x) for x in xs]
+            self.assertEqual((ys[0], ys[-1]), (0.0, 1.0))
+            self.assertEqual(ys, sorted(ys))
+            self.assertEqual((f(-1), f(2)), (0.0, 1.0))
+
+    def test_word_starts_increase_within_duration(self):
+        s = motion.word_starts("one two three four five", 4.0)
+        self.assertEqual(s[0], 0.0)
+        self.assertEqual(s, sorted(s))
+        self.assertLess(s[-1], 4.0)
+
+    def test_long_word_shrinks_font_to_fit(self):
+        words, fnt, lines, size, lh = motion.text_layout("x" * 60 + " ok")
+        self.assertLessEqual(max(fnt.getlength(w) for w in words), motion.W - 2 * motion.MARGIN)
 
     def test_llm_skipped_without_key(self):
         config.ANTHROPIC_API_KEY = ""
