@@ -105,7 +105,7 @@ def run(conn):
             if rewritten:
                 hook, beats = rewritten["hook"], rewritten["beats"]
             cta, resource = pick_cta(row)
-            outro = f"Comment {cta} and I'll send you the link."
+            outro = f"Full links are in the description. Or comment {cta} and I'll send it."
             script = " ".join([hook] + beats + [outro])
             caption = f"{hook}\n\nSource: {row['url']}"
             cur = conn.execute(
