@@ -1,6 +1,7 @@
 """GENERATE: deterministic template first; optional cheap-LLM rewrite under a hard budget."""
 import json
 import logging
+import os
 import re
 import time
 
@@ -124,8 +125,12 @@ def run(conn):
     if room <= 0:
         return 0
     rows = conn.execute(
-        "SELECT * FROM topics WHERE status='QUEUED' AND score>=? AND renders<? ORDER BY score DESC LIMIT ?",
-        (config.GENERATE_SCORE, config.MAX_RENDERS_PER_TOPIC, room)).fetchall()
+        "SELECT * FROM topics WHERE status='QUEUED' AND score>=? AND renders<? ORDER BY score DESC",
+        (config.GENERATE_SCORE, config.MAX_RENDERS_PER_TOPIC)).fetchall()
+    wanted = [s.strip() for s in os.environ.get("GENERATE_SOURCES", "").split(",") if s.strip()]
+    if wanted:  # e.g. "rss,hn,arxiv" to make news-only videos
+        rows = [r for r in rows if r["source"].split(":")[0] in wanted]
+    rows = rows[:room]
     n = 0
     for row in rows:
         try:

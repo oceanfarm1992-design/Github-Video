@@ -10,6 +10,7 @@ STAGES = {
     "research": ["filter", "research", "score"],  # every 3-6 h: only candidates
     "produce": ["generate", "render", "qc", "publish"],  # daily
     "engage": ["engage"],                         # every 30 min: answer keyword comments
+    "draft": ["generate", "render", "qc"],         # make + check videos, never publishes
     "preview": ["preview"],                      # sample render, never publishes
     "analyze": ["analytics"],                    # daily/weekly
     "all": ["discover", "filter", "research", "score", "generate", "render", "qc", "publish", "engage", "analytics"],

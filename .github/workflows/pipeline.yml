@@ -10,8 +10,17 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "collect | research | produce | engage | preview | analyze | all"
+        description: "collect | research | produce | draft | engage | preview | analyze | all"
         default: collect
+      max_videos:
+        description: "Override MAX_VIDEOS_PER_DAY for this run (optional)"
+        required: false
+      sources:
+        description: "Only these source types, e.g. rss,hn,arxiv (optional)"
+        required: false
+      min_score:
+        description: "Override GENERATE_SCORE for this run (optional)"
+        required: false
 
 # One writer at a time: the SQLite state is restored/saved per run.
 concurrency:
@@ -43,10 +52,11 @@ jobs:
       WATERMARK_TEXT: ${{ vars.WATERMARK_TEXT }}
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
       MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
-      MAX_VIDEOS_PER_DAY: ${{ vars.MAX_VIDEOS_PER_DAY || '10' }}
+      MAX_VIDEOS_PER_DAY: ${{ github.event.inputs.max_videos || vars.MAX_VIDEOS_PER_DAY || '10' }}
+      GENERATE_SOURCES: ${{ github.event.inputs.sources }}
       MAX_RENDERS_PER_TOPIC: ${{ vars.MAX_RENDERS_PER_TOPIC || '2' }}
       MIN_TOPIC_SCORE: ${{ vars.MIN_TOPIC_SCORE || '65' }}
-      GENERATE_SCORE: ${{ vars.GENERATE_SCORE || '80' }}
+      GENERATE_SCORE: ${{ github.event.inputs.min_score || vars.GENERATE_SCORE || '80' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,7 +84,7 @@ jobs:
           echo "name=$s" >> "$GITHUB_OUTPUT"
 
       - name: Cache voice-clone models
-        if: ${{ env.VOICE_REPO_PAT != '' && (steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview') }}
+        if: ${{ env.VOICE_REPO_PAT != '' && (steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview' || steps.stage.outputs.name == 'draft') }}
         uses: actions/cache@v4
         with:
           path: |
@@ -84,7 +94,7 @@ jobs:
           key: voice-models-v1
 
       - name: Install voice cloning (own voice)
-        if: ${{ env.VOICE_REPO_PAT != '' && (steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview') }}
+        if: ${{ env.VOICE_REPO_PAT != '' && (steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview' || steps.stage.outputs.name == 'draft') }}
         continue-on-error: true   # a failed install falls back to Edge TTS
         run: |
           sudo apt-get install -y -qq espeak-ng libsndfile1
@@ -103,7 +113,7 @@ jobs:
         run: python -m pipeline ${{ steps.stage.outputs.name }}
 
       - name: Upload rendered videos
-        if: steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview'
+        if: steps.stage.outputs.name == 'produce' || steps.stage.outputs.name == 'all' || steps.stage.outputs.name == 'preview' || steps.stage.outputs.name == 'draft'
         uses: actions/upload-artifact@v4
         with:
           name: videos-${{ github.run_id }}
