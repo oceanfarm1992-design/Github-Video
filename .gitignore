@@ -7,3 +7,4 @@ data/*.db-wal
 data/*.db-shm
 client_secret*.json
 *.token.json
+preview/

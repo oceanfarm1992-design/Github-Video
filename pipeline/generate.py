@@ -36,13 +36,31 @@ def clean_claim(text, limit=140):
     return kept if kept[-1] in ".!?" else kept + "."
 
 
+TOPIC_PHRASES = {
+    "llm": "building with large language models", "ai-agents": "AI agents", "agents": "AI agents",
+    "machine-learning": "machine learning", "rag": "RAG apps", "mcp": "connecting AI to your tools",
+    "deep-learning": "deep learning", "chatbot": "chatbots", "diffusion": "AI image generation",
+}
+
+
 def template_script(row, claims):
     texts = [t for t in (clean_claim(c["text"]) for c in claims) if t]
     title = row["title"]
     short = title.split("/")[-1] if row["source"] == "github" else title
-    hook = f"New on GitHub: {short}." if row["source"] == "github" else f"AI update: {short[:80]}"
-    beats = texts[:4]
-    return hook, beats
+    raw = json.loads(row["raw"] or "{}")
+    if row["source"] == "github":
+        phrase = next((TOPIC_PHRASES[t] for t in raw.get("topics", []) if t in TOPIC_PHRASES), None)
+        if raw.get("license") and phrase:  # "free, open-source" only when the license is a sourced fact
+            hook = f"Want a free, open-source tool for {phrase}?"
+        elif raw.get("license"):
+            hook = "Want a free, open-source AI project to try today?"
+        else:
+            hook = "Looking for a new AI project on GitHub?"
+        intro = f"Meet {short}."
+    else:
+        hook = "Did you catch this AI update?"
+        intro = f"{short[:90]}."
+    return hook, [intro] + texts[:3]
 
 
 def _budget():
@@ -58,8 +76,11 @@ def llm_rewrite(conn, row, claims):
     facts = [t for t in (clean_claim(c["text"]) for c in claims) if t]
     prompt = (
         "Write a 35-second vertical-video script as JSON {\"hook\": str, \"beats\": [str, str, str]}. "
-        "Use ONLY the facts below. Do not add statistics, features or links. Hook under 15 words; "
-        "each beat under 22 words.\nTitle: " + row["title"] + "\nFacts:\n- " + "\n- ".join(facts))
+        "The hook MUST be a question addressed to the viewer (start with 'Do you want', 'Want' or 'Looking for'), "
+        "under 14 words, about the need this project meets, e.g. 'Do you want to build AI videos on your own PC?'. "
+        "Only mention free, local or open-source if the facts say so. The first beat must introduce the project by "
+        "name ('Meet NAME, ...'). Use ONLY the facts below. Do not add statistics, features or links. "
+        "Each beat under 22 words.\nTitle: " + row["title"] + "\nFacts:\n- " + "\n- ".join(facts))
     key = db.sha(config.LLM_MODEL + prompt)
     cached = conn.execute("SELECT response FROM llm_cache WHERE key=?", (key,)).fetchone()
     if cached:
@@ -85,6 +106,8 @@ def llm_rewrite(conn, row, claims):
     out = json.loads(m.group(0))
     if not (isinstance(out.get("hook"), str) and isinstance(out.get("beats"), list) and out["beats"]):
         return None
+    if not out["hook"].strip().endswith("?"):
+        return None  # the hook must be a question; fall back to the template
     result = {"hook": out["hook"], "beats": [str(b) for b in out["beats"][:4]]}
     conn.execute("INSERT OR REPLACE INTO llm_cache VALUES (?,?,?,?)",
                  (key, json.dumps(result), cost, time.time()))

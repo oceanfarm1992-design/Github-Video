@@ -96,6 +96,17 @@ class Tests(unittest.TestCase):
         words, fnt, lines, size, lh = motion.text_layout("x" * 60 + " ok")
         self.assertLessEqual(max(fnt.getlength(w) for w in words), motion.W - 2 * motion.MARGIN)
 
+    def test_template_hook_is_a_question_and_claims_free_only_with_license(self):
+        row = {"title": "a/b", "source": "github", "raw": json.dumps({"topics": ["llm"], "license": "MIT"})}
+        hook, beats = generate.template_script(row, [{"text": "a/b has 1k stars on GitHub."}])
+        self.assertTrue(hook.endswith("?"))
+        self.assertIn("free", hook)
+        self.assertEqual(beats[0], "Meet b.")
+        row["raw"] = json.dumps({"topics": ["llm"]})
+        hook, _ = generate.template_script(row, [])
+        self.assertTrue(hook.endswith("?"))
+        self.assertNotIn("free", hook)
+
     def test_llm_skipped_without_key(self):
         config.ANTHROPIC_API_KEY = ""
         self.assertIsNone(generate.llm_rewrite(self.conn, {"title": "t"}, []))
