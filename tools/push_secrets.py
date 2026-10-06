@@ -2,12 +2,13 @@
 
     python tools/push_secrets.py [--dry-run]
 
-Anything not in ALLOWED (e.g. Supabase keys) is ignored.
+Anything not in ALLOWED is ignored.
 """
 import subprocess
 import sys
 
-ALLOWED = ("ANTHROPIC_API_KEY", "META_PAGE_ID", "META_PAGE_ACCESS_TOKEN", "META_IG_USER_ID")
+ALLOWED = ("ANTHROPIC_API_KEY", "META_PAGE_ID", "META_PAGE_ACCESS_TOKEN", "META_IG_USER_ID",
+           "SUPABASE_URL", "SUPABASE_SERVICE_KEY")
 
 
 def parse(path=".env"):

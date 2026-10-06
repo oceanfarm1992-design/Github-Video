@@ -3,14 +3,15 @@ import argparse
 import logging
 import sys
 
-from . import analytics, db, discover, filter as filt, generate, publish, qc, render, research, score
+from . import analytics, db, engage, discover, filter as filt, generate, publish, qc, render, research, score
 
 STAGES = {
     "collect": ["discover", "filter"],           # every 30-60 min: cheap metadata
     "research": ["filter", "research", "score"],  # every 3-6 h: only candidates
     "produce": ["generate", "render", "qc", "publish"],  # daily
+    "engage": ["engage"],                         # every 30 min: answer keyword comments
     "analyze": ["analytics"],                    # daily/weekly
-    "all": ["discover", "filter", "research", "score", "generate", "render", "qc", "publish", "analytics"],
+    "all": ["discover", "filter", "research", "score", "generate", "render", "qc", "publish", "engage", "analytics"],
 }
 
 
@@ -31,6 +32,8 @@ def run_stage(name, conn):
         return qc.run(conn)
     if name == "publish":
         return publish.run(conn)
+    if name == "engage":
+        return engage.run(conn)
     if name == "analytics":
         return analytics.run(conn)
     raise SystemExit(f"unknown stage {name}")

@@ -3,13 +3,14 @@ name: pipeline
 on:
   schedule:
     - cron: "17 * * * *"      # hourly: collect cheap metadata
+    - cron: "*/30 * * * *"    # every 30 min: answer keyword comments
     - cron: "43 */4 * * *"    # every 4h: research + score candidates
     - cron: "5 14 * * *"      # daily: generate, render, QC, publish
     - cron: "30 6 * * *"      # daily: analytics + learning
   workflow_dispatch:
     inputs:
       stage:
-        description: "collect | research | produce | analyze | all"
+        description: "collect | research | produce | engage | analyze | all"
         default: collect
 
 # One writer at a time: the SQLite state is restored/saved per run.
@@ -33,6 +34,8 @@ jobs:
       META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
       META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}
       META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
       MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
       MAX_VIDEOS_PER_DAY: ${{ vars.MAX_VIDEOS_PER_DAY || '10' }}
@@ -57,6 +60,7 @@ jobs:
         run: |
           case "${{ github.event.schedule }}" in
             "17 * * * *")    s=collect ;;
+            "*/30 * * * *")  s=engage ;;
             "43 */4 * * *")  s=research ;;
             "5 14 * * *")    s=produce ;;
             "30 6 * * *")    s=analyze ;;

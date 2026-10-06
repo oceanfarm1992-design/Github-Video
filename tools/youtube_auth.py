@@ -2,7 +2,7 @@
 
     python tools/youtube_auth.py [client_secret.json]
 
-Opens your browser, you approve the `youtube.upload` + `youtube.readonly` scopes, and the
+Opens your browser, you approve the `youtube.upload`, `youtube.readonly` and `youtube.force-ssl` scopes, and the
 refresh token is stored straight into GitHub Actions secrets with the `gh` CLI. Tokens are
 never printed or written to disk. Pass --print only if you must handle the token yourself.
 """
@@ -16,7 +16,8 @@ import urllib.parse
 import urllib.request
 import webbrowser
 
-SCOPES = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"
+SCOPES = ("https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly "
+          "https://www.googleapis.com/auth/youtube.force-ssl")  # force-ssl: reply to comments
 
 
 def main():

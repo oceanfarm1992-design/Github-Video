@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "t.db")
 
-from pipeline import config, db, discover, filter as filt, generate, score  # noqa: E402
+from pipeline import config, db, discover, filter as filt, engage, generate, score  # noqa: E402
 
 
 def topic(conn, title, url, source="github", **kw):
@@ -83,6 +83,13 @@ class Tests(unittest.TestCase):
             self.assertIsNone(generate.llm_rewrite(self.conn, {"title": "t"}, [{"text": "f"}]))
         finally:
             config.ANTHROPIC_API_KEY, config.DAILY_AI_BUDGET_USD = "", old
+
+    def test_keyword_match_is_whole_word_and_case_insensitive(self):
+        self.assertTrue(engage.matches("github please!", "GITHUB"))
+        self.assertTrue(engage.matches("Link? GITHUB", "GITHUB"))
+        self.assertFalse(engage.matches("githubs are cool", "GITHUB"))
+        self.assertFalse(engage.matches("send CODE", "GITHUB"))
+        self.assertFalse(engage.matches(None, "GITHUB"))
 
 
 if __name__ == "__main__":
