@@ -165,7 +165,8 @@ class Card:
 class Panel:
     """Browser window (chrome bar + address) showing a tall page capture, scrolled smoothly."""
     BAR = 70
-    MAX_SPEED = 520  # px/s of scroll in output pixels; longer pages scroll partway
+    # scroll speed in output px/s (env SCROLL_SPEED); slower = more readable, longer pages scroll partway
+    MAX_SPEED = max(60.0, min(600.0, float(os.environ.get("SCROLL_SPEED", "200") or 200)))
 
     def __init__(self, page_path, url, height):
         src = Image.open(page_path).convert("RGB")
