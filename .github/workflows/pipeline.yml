@@ -97,8 +97,8 @@ jobs:
           t="$VOICE_REPO_PAT"
           ws=no; [[ "$t" =~ [[:space:]] ]] && ws=yes
           echo "length=${#t} type=${t:0:4} whitespace=$ws repo=$VOICE_REF_REPO"
-          curl -s -o /dev/null -w "contents HTTP %{http_code}
-" -H "Authorization: Bearer $t"             -H "Accept: application/vnd.github.raw+json"             "https://api.github.com/repos/$VOICE_REF_REPO/contents/reference_voice.mp3"
+          code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $t" -H "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/$VOICE_REF_REPO/contents/reference_voice.mp3")
+          echo "contents HTTP $code"
 
       - name: Restore state from `data` branch
         run: |
