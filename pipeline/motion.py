@@ -66,6 +66,12 @@ def wrap_words(words, fnt, width):
     return lines
 
 
+def _truncate(word, fnt, limit):
+    while len(word) > 1 and fnt.getlength(word + "...") > limit:
+        word = word[:-1]
+    return word + "..."
+
+
 def text_layout(text):
     words = text.split()
     size = 66 if len(text) < 90 else 54
@@ -73,7 +79,9 @@ def text_layout(text):
     while size > 30 and max(fnt.getlength(w) for w in words) > W - 2 * MARGIN:  # long repo names
         size -= 4
         fnt = font(size)
-    lines = wrap_words(words, fnt, W - 2 * MARGIN)
+    limit = W - 2 * MARGIN
+    words = [w if fnt.getlength(w) <= limit else _truncate(w, fnt, limit) for w in words]  # still too wide at min size
+    lines = wrap_words(words, fnt, limit)
     return words, fnt, lines, size, int(size * 1.3)
 
 
