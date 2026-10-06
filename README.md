@@ -41,7 +41,7 @@ Viewers comment the video's one keyword (`GITHUB`, `TOOL`, `CODE`, `DOCS`, `DEMO
 - YouTube: the approved link is put in the video description and the outro says so; no comment bot by default (set `YOUTUBE_COMMENT_REPLIES=1` and add the `youtube.force-ssl` scope to enable public replies). Facebook/Instagram: private reply (DM) to the comment.
 - Comment events hold personal data, so they live only in Supabase (RLS locked), never in the public `data` branch.
 - One reply per comment (unique key) and one link per commenter per video; `MAX_REPLIES_PER_RUN` caps volume.
-- Setup: run `supabase/schema.sql` in the Supabase SQL editor; add secrets `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`; Instagram/Facebook DMs also need `instagram_manage_messages` / `pages_messaging` on the Meta token.
+- Setup: run `supabase/schema.sql` in the Supabase SQL editor; add secrets `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (the `sb_secret_...` key; the publishable key and JWKS URL are not needed); Instagram/Facebook DMs also need `instagram_manage_messages` / `pages_messaging` on the Meta token.
 - Meta private replies only work within 7 days of the comment; YouTube may hold link comments for review.
 
 ## Platform status

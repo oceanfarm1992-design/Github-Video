@@ -6,13 +6,21 @@ import urllib.parse
 from .http import request
 
 
+def _key():
+    """New-style `sb_secret_...` key, or a legacy service_role JWT."""
+    return os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_SERVICE_KEY") or ""
+
+
 def configured():
-    return bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_KEY"))
+    return bool(os.environ.get("SUPABASE_URL") and _key())
 
 
 def _h(extra=None):
-    k = os.environ["SUPABASE_SERVICE_KEY"]
-    return {"apikey": k, "Authorization": f"Bearer {k}", "Content-Type": "application/json", **(extra or {})}
+    k = _key()
+    h = {"apikey": k, "Content-Type": "application/json", **(extra or {})}
+    if k.startswith("eyJ"):  # legacy JWT keys go in Authorization too; sb_secret_ keys are apikey-only
+        h["Authorization"] = f"Bearer {k}"
+    return h
 
 
 def _url(table, params=None):
