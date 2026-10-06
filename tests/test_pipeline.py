@@ -125,6 +125,12 @@ class Tests(unittest.TestCase):
         self.assertTrue(hook.endswith("?"))
         self.assertNotIn("free", hook)
 
+    def test_zernio_profile_id_object_or_string(self):
+        from pipeline import zernio
+        self.assertEqual(zernio._profile_id({"profileId": {"_id": "p1", "name": "Default"}}), "p1")
+        self.assertEqual(zernio._profile_id({"profileId": "p2"}), "p2")
+        self.assertEqual(zernio.PUBLIC_REPLY, "Check your inbox, thank you!")
+
     def test_llm_skipped_without_key(self):
         config.ANTHROPIC_API_KEY = ""
         self.assertIsNone(generate.llm_rewrite(self.conn, {"title": "t"}, []))

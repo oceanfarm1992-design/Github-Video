@@ -210,7 +210,7 @@ def run(conn):
                 replied_authors.add(c["author_id"])  # reserve: later comments from this person are skipped
             if matches(c["body"], link["keyword"]) or LINK_ASK_RE.search(c["body"] or ""):
                 text = ("Thanks! The link is in the description." if plat == "youtube"
-                        else f"Thanks! Comment {link['keyword']} and I'll DM you the link.")
+                        else f"Thanks! Comment {link['keyword']} and check your inbox for the link.")
                 todo.append((c, ev["id"], text, "keyword"))
             elif can_ai:
                 todo.append((c, ev["id"], None, "ai"))

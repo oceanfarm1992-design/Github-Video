@@ -80,6 +80,15 @@ def publish_reel(platform, c, video_url):
     return pid, plat.get("platformPostUrl", "")
 
 
+PUBLIC_REPLY = "Check your inbox, thank you!"  # public reply under the keyword comment; the DM carries the link
+
+
+def _profile_id(acct):
+    """Zernio returns profileId as an object {_id, name}; the automation API wants the id string."""
+    p = acct.get("profileId")
+    return p.get("_id") if isinstance(p, dict) else p
+
+
 def create_automation(platform, acct, platform_post_id, zernio_post_id, c):
     """Scope to the live platform post if known, else to the Zernio post id (pending posts)."""
     cta = c.get("_cta")
@@ -87,13 +96,13 @@ def create_automation(platform, acct, platform_post_id, zernio_post_id, c):
         return
     scope = {"platformPostId": platform_post_id} if platform_post_id else {"postId": zernio_post_id}
     _call("/comment-automations", {**scope,
-        "profileId": _first(acct, "profileId") or (acct.get("profile") or {}).get("_id") or acct.get("profile"),
+        "profileId": _profile_id(acct),
         "accountId": acct["_id"],
         "name": f"{platform}:{c['title'][:40]}:{cta['keyword']}",
         "keywords": [cta["keyword"]],
         "matchMode": "word",
         "dmMessage": cta["response"],
-        "commentReply": "Sent you a DM with the link.",
+        "commentReply": PUBLIC_REPLY,
     })
 
 
