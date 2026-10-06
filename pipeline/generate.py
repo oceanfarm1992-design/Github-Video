@@ -26,6 +26,12 @@ def pick_cta(row):
     return "SOURCE", row["url"]
 
 
+def numbers(text):
+    """Numbers as written (1.7k, 501B, 40%, 2,000 -> 2000), for the no-invented-statistics check."""
+    found = re.findall(r"\d+(?:[.,]\d+)*\s?(?:[kmb](?![a-z])|%)?", (text or "").lower())
+    return {re.sub(r"[,\s]", "", n).rstrip(".") for n in found}
+
+
 def clean_claim(text, limit=140):
     """Make a claim safe to show and speak: drop CJK/emoji/symbols the font and voice can't handle."""
     text = re.sub(r"^Description:\s*", "", text)
@@ -113,6 +119,10 @@ def llm_rewrite(conn, row, claims):
     if not out["hook"].strip().endswith("?"):
         return None  # the hook must be a question; fall back to the template
     result = {"hook": out["hook"], "beats": [str(b) for b in out["beats"][:max(2, min(4, len(facts) + 1))]]}
+    invented = numbers(" ".join([result["hook"]] + result["beats"])) - numbers(row["title"] + " " + " ".join(facts))
+    if invented:  # a statistic not in the sourced facts: never publish it, use the fact-only template
+        log.warning("LLM script for %s has unsourced numbers %s; using template", row["title"], sorted(invented))
+        return None
     conn.execute("INSERT OR REPLACE INTO llm_cache VALUES (?,?,?,?)",
                  (key, json.dumps(result), cost, time.time()))
     return result

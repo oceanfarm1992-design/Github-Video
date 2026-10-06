@@ -141,6 +141,13 @@ class Tests(unittest.TestCase):
         self.assertTrue(cap.startswith("Want a free tool?"))
         self.assertTrue(cap.endswith("#AI #GitHub"))
 
+    def test_numbers_for_invented_statistic_check(self):
+        self.assertEqual(generate.numbers("It has 1.7k stars and 501B params, 40% faster, 2,000 users"),
+                         {"1.7k", "501b", "40%", "2000"})
+        facts = generate.numbers("Beam: Reflection's 501B open-weight model. Trending (487 points).")
+        self.assertFalse(generate.numbers("Meet Beam, a 501B model with 487 points") - facts)
+        self.assertEqual(generate.numbers("Up to 3x faster on 128 GPUs") - facts, {"3", "128"})
+
     def test_llm_skipped_without_key(self):
         config.ANTHROPIC_API_KEY = ""
         self.assertIsNone(generate.llm_rewrite(self.conn, {"title": "t"}, []))
