@@ -168,7 +168,10 @@ class DmFallbackTests(unittest.TestCase):
         finally:
             for k, v in olds.items():
                 setattr(k[0], k[1], v)
-        self.assertEqual(dms, [("k1", "Here's the link: https://g/r")])
+        self.assertEqual([d[0] for d in dms], ["k1"])
+        self.assertIn("https://g/r", dms[0][1])
+        self.assertIn(dms[0][1], engage.zernio.dm_messages("Repo", "Here's the link: https://g/r"))
+        self.assertNotEqual(dms[0][1].strip(), "Here's the link: https://g/r")  # never a bare link (spam folder)
         self.assertEqual(public, [("k1", "Check your inbox, thank you!")])
         self.assertEqual(stats["replies"], 1)
         status = {e["comment_id"]: (e["status"], e.get("error")) for e in fake.t["comment_events"]}

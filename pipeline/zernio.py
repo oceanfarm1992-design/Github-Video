@@ -109,19 +109,41 @@ def _profile_id(acct):
     return p.get("_id") if isinstance(p, dict) else p
 
 
+def dm_messages(title, response):
+    """Conversational DM wordings (first = main, rest = rotation). A bare, identical link message from a
+    Page someone never chatted with is what Messenger files as spam; a greeting, context and an invitation
+    to reply look like a conversation, and a reply moves the thread to the main inbox."""
+    short = title.split("/")[-1] if "/" in title and " " not in title else title
+    short = short if len(short) <= 60 else short[:57].rsplit(" ", 1)[0] + "..."
+    if response.startswith("Here's the link: "):
+        body = "here's the link you asked for:\n" + response.split("Here's the link: ", 1)[1]
+    else:  # tools video: numbered list of links
+        body = "here are the links you asked for:\n" + response.split(":\n", 1)[-1]
+    return [
+        f"Hi! Thanks for commenting on our video about {short} \U0001F64C\n\nAs promised, {body}\n\n"
+        "Any questions? Just reply here, I read every message.",
+        f"Hey, thanks for watching our {short} video!\n\n{body[0].upper() + body[1:]}\n\n"
+        "Reply and tell me what you think of it.",
+        f"Thanks for your comment! \U0001F60A\n\nFor the {short} video, {body}\n\n"
+        "Want more like this? Reply YES and I'll keep you posted.",
+    ]
+
+
 def create_automation(platform, acct, platform_post_id, zernio_post_id, c):
     """Scope to the live platform post if known, else to the Zernio post id (pending posts)."""
     cta = c.get("_cta")
     if not cta or not (platform_post_id or zernio_post_id):
         return
     scope = {"platformPostId": platform_post_id} if platform_post_id else {"postId": zernio_post_id}
+    msgs = dm_messages(c["title"], cta["response"])
     _call("/comment-automations", {**scope,
         "profileId": _profile_id(acct),
         "accountId": acct["_id"],
         "name": f"{platform}:{c['title'][:40]}:{cta['keyword']}",
         "keywords": [cta["keyword"]],
         "matchMode": "word",
-        "dmMessage": cta["response"],
+        "dmMessage": msgs[0],
+        "dmMessageVariations": msgs[1:],
         "commentReply": PUBLIC_REPLY,
     })
 
