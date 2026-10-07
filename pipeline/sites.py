@@ -42,6 +42,60 @@ CATALOG = [
 ]
 
 
+# Safety screen for every catalog entry (also the imported list): never people-search / OSINT tracing,
+# leaks, exploits or malware, exposed-device search, open or unsecured cameras, piracy or ROMs, paywall
+# bypass, anonymity networks, gambling, adult, crypto / blockchain (financial-content risk, off-theme).
+DENY = re.compile(
+    r"osint|people ?(search|finder)|person ?(search|finder|lookup)|whatsmyname|sherlock|maltego|spiderfoot|"
+    r"harvester|recon-ng|intelx|intelligence x|geospy|face ?(search|check)|pimeyes|leakix|data ?leak|"
+    r"leak search|breach ?(search|data)|exploit|malware|phish|shodan|censys|zoomeye|insecam|webcam taxi|"
+    r"rom ?hack|\broms?\b|emulator zone|torrent|\bpira(te|cy)|warez|\bcrack|keygen|unpaywall|paywall|unblock|"
+    r"\bproxy|\btor\b|onion|dark ?web|gambl|casino|betting|adult|porn|dating|cryptocurrenc|\bcrypto\b|"
+    r"blockchain|\w*coin\b|\bdefi\b|etherscan|solscan|\bnft|doxx|stalk|\bspy\b",
+    re.I)
+
+# Theme fit for "feels illegal to know": surprising, explorable, free sites first; developer
+# infrastructure last (still valid if it has content, just less of a "wow").
+TIER1 = re.compile(r"archive|research|map|explor|space|astronom|satellite|ocean|marine|weather|earth|"
+                   r"flight|plane|ship|vessel|iss\b|camera|webcam|radio|music|sound|game|history|book|"
+                   r"librar|free|image|photo|video|ai|calculator|utilit|learn|educat|data|science|museum|"
+                   r"art|privacy", re.I)
+TIER2 = re.compile(r"design|productiv|icon|font|color|3d|maker|electronic|math|template|writing|"
+                   r"presentation|chart|visual", re.I)
+
+
+def _tier(name, category):
+    text = f"{name} {category}"
+    return 0 if TIER1.search(text) else 1 if TIER2.search(text) else 2
+
+
+def load_catalog():
+    """Hand-picked CATALOG first, then the imported list (pipeline/sites_catalog.json), screened by
+    DENY, de-duplicated by URL and ordered by theme fit."""
+    import json
+    seen, out = set(), []
+
+    def key(u):
+        return re.sub(r"^https?://(www\.)?", "", u).rstrip("/").lower()
+
+    for name, url in CATALOG:
+        if key(url) not in seen and not DENY.search(name):
+            seen.add(key(url))
+            out.append((name, url))
+    try:
+        extra = json.loads((Path(__file__).with_name("sites_catalog.json")).read_text(encoding="utf-8"))
+    except Exception:
+        extra = []
+    ranked = sorted(((_tier(e["name"], e.get("category", "")), i, e) for i, e in enumerate(extra)),
+                    key=lambda x: (x[0], x[1]))
+    for _, _, e in ranked:
+        u = e.get("url", "")
+        if u.startswith("https://") and key(u) not in seen and not DENY.search(f"{e['name']} {e.get('category', '')}"):
+            seen.add(key(u))
+            out.append((e["name"], u))
+    return out
+
+
 def used_urls(conn):
     """Sites already shown in any part (never repeated)."""
     import json
@@ -85,7 +139,7 @@ def build_single(conn, part):
     """One website per video: its homepage explored section by section (camera zooms into each)."""
     from . import browser
     used = used_urls(conn)
-    for name, url in CATALOG:
+    for name, url in load_catalog():
         if url in used:
             continue
         try:
@@ -127,7 +181,7 @@ def build(conn, count=None, part=None):
         return build_single(conn, part)
     used = used_urls(conn)
     items = []
-    for name, url in CATALOG:
+    for name, url in load_catalog():
         if len(items) >= count:
             break
         if url in used:

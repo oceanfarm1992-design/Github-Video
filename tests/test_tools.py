@@ -80,6 +80,20 @@ class ToolsTests(unittest.TestCase):
         self.assertIsNone(publish.already_published("youtube", "t1"))
         publish.record_published("youtube", "t1", "v1", "u")  # must not raise
 
+    def test_sites_catalog_safety_screen(self):
+        from pipeline import sites
+        for bad in ("Shodan [Cybersecurity]", "Sherlock [OSINT]", "Insecam [Live Cameras]", "Exploit Database",
+                    "Pirate Bay", "Bitcoin.org [Blockchain]", "CoinGecko [Crypto Data]", "PimEyes [Face Search]",
+                    "Tor Browser [Privacy Browser]", "ROMhacking.net [Game Modding]", "12ft Paywall Bypass"):
+            self.assertTrue(sites.DENY.search(bad), bad)
+        for good in ("Designspiration [Design]", "This Person Does Not Exist [AI Demo]", "DSPy [AI Development]",
+                     "Photopea [Design]", "Radio Garden [Entertainment]", "ClearlyDefined [Software Licensing]"):
+            self.assertFalse(sites.DENY.search(good), good)
+        cat = sites.load_catalog()
+        self.assertGreater(len(cat), 1000)
+        self.assertEqual(cat[0][0], "Radio Garden")  # hand-picked list first
+        self.assertFalse([n for n, _ in cat if sites.DENY.search(n)])
+
     def test_outro_counts_links_not_narrated_lines(self):
         one = generate.series_outro("LINK", "Here's the link: https://www.photopea.com", legal_note=True)
         self.assertEqual(one, "All 100% legal. Comment LINK and I'll send you the link.")
