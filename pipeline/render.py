@@ -133,8 +133,8 @@ def clone_style():
     """Speaking-style clip in the voice reference repo, how closely to follow it (beta: 0 = copy
     exactly) and expressiveness (StyleTTS2 embedding_scale)."""
     ref = os.environ.get("VOICE_STYLE_REF", "").strip() or None
-    return (ref, _env_float("VOICE_STYLE_BETA", 0.0, 0.0, 1.0),
-            _env_float("VOICE_EXPRESSIVENESS", 1.5, 0.5, 3.0))
+    return (ref, _env_float("VOICE_STYLE_BETA", 0.3, 0.0, 1.0),
+            _env_float("VOICE_EXPRESSIVENESS", 1.0, 0.5, 3.0))
 
 
 def style_key():

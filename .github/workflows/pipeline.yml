@@ -41,8 +41,8 @@ jobs:
       VOICE_REF_REPO: ${{ vars.VOICE_REF_REPO }}
       VOICE_SPEED: ${{ vars.VOICE_SPEED || '1.1' }}
       VOICE_STYLE_REF: ${{ vars.VOICE_STYLE_REF || 'style_reference.wav' }}
-      VOICE_STYLE_BETA: ${{ vars.VOICE_STYLE_BETA || '0.0' }}
-      VOICE_EXPRESSIVENESS: ${{ vars.VOICE_EXPRESSIVENESS || '1.5' }}
+      VOICE_STYLE_BETA: ${{ vars.VOICE_STYLE_BETA || '0.3' }}
+      VOICE_EXPRESSIVENESS: ${{ vars.VOICE_EXPRESSIVENESS || '1.0' }}
       SCROLL_SPEED: ${{ vars.SCROLL_SPEED || '200' }}
       WATERMARK_TEXT: ${{ vars.WATERMARK_TEXT }}
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
