@@ -128,9 +128,8 @@ def track(style, seconds, out_dir):
 
 
 def style_for(source):
-    """Mood per series; MUSIC_STYLE overrides ("hacker", "horror", "off")."""
+    """Mood for a video: the owner chose the hacker track for every series.
+    MUSIC_STYLE overrides ("hacker", "horror", "off")."""
     import os
-    forced = os.environ.get("MUSIC_STYLE", "auto").strip().lower()
-    if forced in ("hacker", "horror", "off"):
-        return forced
-    return "horror" if str(source or "").startswith("sites:") else "hacker"
+    forced = os.environ.get("MUSIC_STYLE", "hacker").strip().lower()
+    return forced if forced in ("hacker", "horror", "off") else "hacker"
