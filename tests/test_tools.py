@@ -80,6 +80,28 @@ class ToolsTests(unittest.TestCase):
         self.assertIsNone(publish.already_published("youtube", "t1"))
         publish.record_published("youtube", "t1", "v1", "u")  # must not raise
 
+    def test_sites_series_script_quota_and_no_repeats(self):
+        from pipeline import db, sites
+        row = {"source": "sites:part-3", "raw": json.dumps({"part": 3, "tools": [
+            {"name": "Radio Garden", "url": "https://radio.garden", "description": "Explore live radio."}]})}
+        hook, beats, links = generate.sites_script(row)
+        self.assertEqual(hook, "Websites that feel illegal to know. Part 3.")
+        self.assertEqual(beats, ["1. Radio Garden: Explore live radio."])
+        self.assertIn("https://radio.garden", links)
+        self.assertEqual(generate.kind("sites:part-3"), "sites")
+        self.assertEqual(generate.caption_question(row), "Which one did you not know about?")
+        mk = lambda src, sc: {"source": src, "score": sc}
+        got = generate.pick([mk("github", 80), mk("rss:x", 70), mk("sites:part-1", 90)], 1, 0, 75, 65, 0, 1)
+        self.assertEqual([r["source"] for r in got], ["sites:part-1", "github"])  # news quota 0 now
+        conn = db.connect(":memory:")
+        conn.execute("INSERT INTO topics (id,title,source,url,raw,status) VALUES ('p1','t','sites:part-1','u',?, 'PUBLISHED')",
+                     (json.dumps({"tools": [{"url": "https://radio.garden"}]}),))
+        self.assertIn("https://radio.garden", sites.used_urls(conn))
+        self.assertEqual(sites.next_part(conn), 2)
+        for name, url in sites.CATALOG:  # catalog hygiene
+            self.assertTrue(url.startswith("https://"), name)
+        self.assertEqual(len({u for _, u in sites.CATALOG}), len(sites.CATALOG))  # no duplicates
+
     def test_dm_greets_by_first_name_only_for_real_names(self):
         from pipeline import zernio
         self.assertEqual(zernio.first_name("Irshan Sareef"), "Irshan")

@@ -9,7 +9,7 @@ import os
 import shutil
 from pathlib import Path
 
-from . import config, db, generate, render, tools
+from . import config, db, generate, render, sites, tools
 
 SAMPLE = {
     "hook": "Do you want a free, open-source tool to build with language models?",
@@ -22,7 +22,17 @@ TOPIC = {"source": "github", "github_url": "https://github.com/QingYunA/answer-m
 
 
 def run(conn=None):
-    if os.environ.get("GENERATE_SOURCES", "").strip() == "tools":
+    if os.environ.get("GENERATE_SOURCES", "").strip() == "sites":
+        mem = db.connect(":memory:")
+        tid = sites.build(mem, part=1)
+        if not tid:
+            return {"error": "not enough verified sites"}
+        row = mem.execute("SELECT * FROM topics WHERE id=?", (tid,)).fetchone()
+        hook, beats, _ = generate.sites_script(row)
+        script = {"hook": hook, "beats": beats,
+                  "outro": f"All 100% legal. Comment LINK and I'll send you all {len(beats)} links."}
+        path = render.render({"script": json.dumps(script), "title": row["title"]}, row)
+    elif os.environ.get("GENERATE_SOURCES", "").strip() == "tools":
         mem = db.connect(":memory:")
         tid = tools.build(mem, os.environ.get("PREVIEW_TOOLS_CATEGORY", "video"))
         if not tid:

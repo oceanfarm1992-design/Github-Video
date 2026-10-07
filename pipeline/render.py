@@ -30,7 +30,7 @@ MAX_SECONDS_TOOLS = 88.0  # tools lists: YouTube Shorts + Instagram Reels (90 s)
 def tools_of(topic):
     """The verified tools list of an AI-tools topic, else None."""
     try:
-        if topic and str(topic["source"]).startswith("tools:"):
+        if topic and str(topic["source"]).startswith(("tools:", "sites:")):
             return json.loads(topic["raw"] or "{}").get("tools") or None
     except (KeyError, IndexError, TypeError, ValueError):
         pass
@@ -212,7 +212,8 @@ def render(content, topic=None):
         return str(mp4)  # never regenerate an unchanged asset
 
     tools = tools_of(topic)
-    max_seconds = MAX_SECONDS_TOOLS if tools else MAX_SECONDS
+    # 10-tool lists may run to 88 s (YouTube/Instagram); website parts stay under Facebook's 60 s
+    max_seconds = MAX_SECONDS_TOOLS if tools and str(topic["source"]).startswith("tools:") else MAX_SECONDS
     scene_pages = scene_labels = None
     card = page = page_url = None
     if tools:  # one scene per tool: its homepage live in a browser window, labelled "#i/N  Name"

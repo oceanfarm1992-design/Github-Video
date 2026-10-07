@@ -3,18 +3,18 @@ import argparse
 import logging
 import sys
 
-from . import analytics, db, engage, preview, zernio_check, discover, tools, filter as filt, generate, publish, qc, render, research, score
+from . import analytics, db, engage, preview, zernio_check, discover, tools, sites, filter as filt, generate, publish, qc, render, research, score
 
 STAGES = {
     "collect": ["discover", "filter"],           # every 30-60 min: cheap metadata
-    "research": ["filter", "research", "score", "tools"],  # every 3-6 h: only candidates
-    "produce": ["tools", "generate", "render", "qc", "publish"],  # daily
+    "research": ["filter", "research", "score", "tools", "sites"],  # every 3-6 h: only candidates
+    "produce": ["tools", "sites", "generate", "render", "qc", "publish"],  # daily
     "engage": ["engage"],                         # every 30 min: answer keyword comments
-    "draft": ["tools", "generate", "render", "qc"],         # make + check videos, never publishes
+    "draft": ["tools", "sites", "generate", "render", "qc"],         # make + check videos, never publishes
     "preview": ["preview"],                      # sample render, never publishes
     "zernio": ["zernio"],                         # read-only: list Zernio accounts + automations
     "analyze": ["analytics"],                    # daily/weekly
-    "all": ["discover", "filter", "research", "score", "tools", "generate", "render", "qc", "publish", "engage", "analytics"],
+    "all": ["discover", "filter", "research", "score", "tools", "sites", "generate", "render", "qc", "publish", "engage", "analytics"],
 }
 
 
@@ -25,6 +25,8 @@ def run_stage(name, conn):
         return filt.run(conn)
     if name == "tools":
         return tools.run(conn)
+    if name == "sites":
+        return sites.run(conn)
     if name == "research":
         return research.run(conn)
     if name == "score":

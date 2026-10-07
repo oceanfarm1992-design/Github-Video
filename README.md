@@ -26,9 +26,10 @@ Every stage resumes from DB state; failures retry with exponential backoff (10 m
    - `ZERNIO_API_KEY` - preferred for Facebook/Instagram: publishes Reels through [Zernio](https://docs.zernio.com) and creates a keyword -> DM comment automation per post (replaces the direct Meta credentials below and the built-in Meta DM replies; Zernio is a third-party service)
    - `META_PAGE_ID`, `META_PAGE_ACCESS_TOKEN`, `META_IG_USER_ID` – Facebook Page Reels + Instagram Reels (Meta Graph API; the IG account must be a Business/Creator account linked to the Page)
    - `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` â€“ YouTube Data API (Shorts upload)
-4. Daily mix (4 videos, made in two produce slots at 09:05 and 14:05 UTC, max 2 per run): `DAILY_GITHUB_VIDEOS` (2), `DAILY_NEWS_VIDEOS` (1), `DAILY_TOOLS_VIDEOS` (1); score bars `GENERATE_SCORE` (75, GitHub) and `GENERATE_SCORE_NEWS` (65, news).
+4. Daily mix (4 videos, made in two produce slots at 09:05 and 14:05 UTC, max 2 per run): `DAILY_GITHUB_VIDEOS` (2), `DAILY_TOOLS_VIDEOS` (1), `DAILY_SITES_VIDEOS` (1), `DAILY_NEWS_VIDEOS` (0, AI news is off); score bars `GENERATE_SCORE` (75, GitHub) and `GENERATE_SCORE_NEWS` (65, news).
    AI-tools videos ("10 AI tools for video generation"): one catalog category per video (`pipeline/tools.py`), each tool's homepage opened in Chromium and described only with its own site description; dead or empty sites are skipped. `TOOLS_PER_VIDEO` (10). Facebook is skipped for videos over 60 s (Reels limit); YouTube and Instagram get the full video.
-   Preview a tools video without publishing: Actions -> pipeline -> Run workflow, stage `preview`, sources `tools`.
+   Websites series ("Websites that feel illegal to know - Part N", all legal): `SITES_PER_VIDEO` (5) sites per part from the curated catalog in `pipeline/sites.py`, never repeated; no piracy, paywall-bypass, people-search or open-camera sites. Comment keyword `LINK`.
+   Preview without publishing: Actions -> pipeline -> Run workflow, stage `preview`, sources `tools` or `sites`.
 5. Optional variables: `DAILY_AI_BUDGET_USD`, `MAX_LLM_CALLS_PER_DAY`, `MAX_VIDEOS_PER_DAY`, `MAX_RENDERS_PER_TOPIC`, `MIN_TOPIC_SCORE`, `GENERATE_SCORE`.
 6. Run **Actions â†’ pipeline â†’ Run workflow** once; schedules take over (hourly collect, 4-hourly research, daily produce/analyze).
 

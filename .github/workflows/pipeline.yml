@@ -11,13 +11,13 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "collect | research | tools | produce | draft | engage | preview | zernio | analyze | all"
+        description: "collect | research | tools | sites | produce | draft | engage | preview | zernio | analyze | all"
         default: collect
       max_videos:
         description: "Override MAX_VIDEOS_PER_DAY for this run (optional)"
         required: false
       sources:
-        description: "Only these source types, e.g. github | rss,hn,arxiv | tools (optional)"
+        description: "Only these source types, e.g. github | tools | sites | rss,hn,arxiv (optional)"
         required: false
       min_score:
         description: "Override GENERATE_SCORE for this run (optional)"
@@ -50,7 +50,9 @@ jobs:
       MAX_VIDEOS_PER_DAY: ${{ github.event.inputs.max_videos || vars.MAX_VIDEOS_PER_DAY || '4' }}
       MAX_VIDEOS_PER_RUN: ${{ vars.MAX_VIDEOS_PER_RUN || '2' }}
       DAILY_GITHUB_VIDEOS: ${{ vars.DAILY_GITHUB_VIDEOS || '2' }}
-      DAILY_NEWS_VIDEOS: ${{ vars.DAILY_NEWS_VIDEOS || '1' }}
+      DAILY_NEWS_VIDEOS: ${{ vars.DAILY_NEWS_VIDEOS || '0' }}
+      DAILY_SITES_VIDEOS: ${{ vars.DAILY_SITES_VIDEOS || '1' }}
+      SITES_PER_VIDEO: ${{ vars.SITES_PER_VIDEO || '5' }}
       DAILY_TOOLS_VIDEOS: ${{ vars.DAILY_TOOLS_VIDEOS || '1' }}
       TOOLS_PER_VIDEO: ${{ vars.TOOLS_PER_VIDEO || '10' }}
       GENERATE_SCORE_NEWS: ${{ vars.GENERATE_SCORE_NEWS || '65' }}

@@ -26,7 +26,9 @@ GENERATE_SCORE = _i("GENERATE_SCORE", 75)  # GitHub bar; real scores top out nea
 PRIORITY_SCORE = _i("PRIORITY_SCORE", 90)
 # Daily mix: N GitHub-project videos + N AI-news videos (news items score lower, so a lower bar).
 DAILY_GITHUB_VIDEOS = _i("DAILY_GITHUB_VIDEOS", 2)
-DAILY_NEWS_VIDEOS = _i("DAILY_NEWS_VIDEOS", 1)
+DAILY_NEWS_VIDEOS = _i("DAILY_NEWS_VIDEOS", 0)   # AI news replaced by the websites series (set 1 to bring it back)
+DAILY_SITES_VIDEOS = _i("DAILY_SITES_VIDEOS", 1)   # "Websites that feel illegal to know - Part N"
+SITES_PER_VIDEO = _i("SITES_PER_VIDEO", 5)
 DAILY_TOOLS_VIDEOS = _i("DAILY_TOOLS_VIDEOS", 1)   # "N AI tools for <category>" videos
 TOOLS_PER_VIDEO = _i("TOOLS_PER_VIDEO", 10)
 # at most this many videos per produce run; two daily produce slots catch up if GitHub drops one schedule
@@ -35,7 +37,7 @@ GENERATE_SCORE_NEWS = _i("GENERATE_SCORE_NEWS", 65)
 HTTP_TIMEOUT = _i("HTTP_TIMEOUT", 20)
 MAX_ATTEMPTS = _i("MAX_ATTEMPTS", 3)
 
-CTA_KEYWORDS = ("GITHUB", "TOOL", "CODE", "DOCS", "DEMO", "SOURCE")
+CTA_KEYWORDS = ("GITHUB", "TOOL", "CODE", "DOCS", "DEMO", "SOURCE", "LINK")
 
 # Strategy weights the learning stage may adjust, always clamped to these safe limits.
 WEIGHT_LIMITS = (0.5, 1.5)
