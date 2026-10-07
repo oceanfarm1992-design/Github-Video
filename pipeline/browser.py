@@ -3,6 +3,7 @@
 One full-page screenshot at 2x (crisp), which motion.py scrolls through smoothly. Cheaper and sharper
 than recording a live browser in real time. Only public pages, no login, no interaction beyond scrolling.
 """
+import json
 import logging
 import re
 from pathlib import Path
@@ -55,6 +56,34 @@ def available():
         return False
 
 
+# Page sections in reading order: each h1-h3 heading with the first real paragraph after it and the box
+# (CSS px, page coordinates) of the block that holds them. Used to zoom into important parts.
+SECTIONS_JS = r"""(maxH) => {
+  const out = [], clean = s => (s || '').replace(/\s+/g, ' ').trim();
+  for (const h of document.querySelectorAll('h1,h2,h3')) {
+    const r = h.getBoundingClientRect(), y = r.top + scrollY;
+    if (r.width < 40 || r.height < 10 || y > maxH - 120) continue;
+    const heading = clean(h.innerText);
+    if (heading.length < 3 || heading.length > 120) continue;
+    let text = '', pel = null, el = h.nextElementSibling, k = 0;
+    while (el && k < 4 && !text) { const t = clean(el.innerText); if (t.length > 30) { text = t; pel = el; } el = el.nextElementSibling; k++; }
+    // box = heading + its own paragraph (not the shared parent grid)
+    let x0 = r.left, y0 = r.top, x1 = r.right, y1 = r.bottom;
+    if (pel) { const q = pel.getBoundingClientRect(); if (q.height < 600) { x0 = Math.min(x0, q.left); y0 = Math.min(y0, q.top); x1 = Math.max(x1, q.right); y1 = Math.max(y1, q.bottom); } }
+    out.push({heading, text: text.slice(0, 400), box: [x0, y0 + scrollY, x1 - x0, y1 - y0]});
+  }
+  return out;
+}"""
+
+
+def sections_for(page_path):
+    """Sections recorded when the page was captured ([] if none)."""
+    try:
+        return json.loads(Path(page_path).with_suffix(".json").read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
 def supported(url):
     return bool(url) and url.startswith(("https://github.com/", "https://huggingface.co/"))
 
@@ -78,7 +107,8 @@ def capture(url, out_dir, any_site=False, max_css_height=None):
             b = p.chromium.launch()
             try:
                 page = b.new_page(viewport={"width": CSS_WIDTH, "height": 960}, device_scale_factor=SCALE,
-                                  color_scheme="dark", locale="en-US")
+                                  color_scheme="dark", locale="en-US",
+                                  bypass_csp=True)  # strict CSP sites would block our banner-hiding CSS
                 page.goto(url, wait_until="domcontentloaded", timeout=45_000)
                 try:  # marketing sites rarely go fully idle (analytics); a best-effort wait is enough
                     page.wait_for_load_state("networkidle", timeout=15_000)
@@ -100,6 +130,12 @@ def capture(url, out_dir, any_site=False, max_css_height=None):
                     log.info("capture of %s hit a bot-protection page; skipped", url)
                     return None
                 height = min(page.evaluate("document.documentElement.scrollHeight"), max_css_height)
+                # where the page's own sections are (heading + text under it), for zoom-in scenes
+                try:
+                    secs = page.evaluate(SECTIONS_JS, height)
+                    out.with_suffix(".json").write_text(json.dumps(secs), encoding="utf-8")
+                except Exception as e:
+                    log.info("section scan failed for %s: %s", url, e)
                 page.screenshot(path=str(out), full_page=True,
                                 clip={"x": 0, "y": 0, "width": CSS_WIDTH, "height": height})
             finally:

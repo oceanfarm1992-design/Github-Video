@@ -27,6 +27,19 @@ MAX_SECONDS = 58.0  # Facebook Reels limit is 60 s
 MAX_SECONDS_TOOLS = 88.0  # tools lists: YouTube Shorts + Instagram Reels (90 s); Facebook is skipped > 60 s
 
 
+DISCLAIMER = os.environ.get("DISCLAIMER_TEXT", "For educational purposes only")
+
+
+def sections_of(topic):
+    """Sections of a one-website video (heading, text, box), else None."""
+    try:
+        if topic and str(topic["source"]).startswith("sites:"):
+            return json.loads(topic["raw"] or "{}").get("sections") or None
+    except (KeyError, IndexError, TypeError, ValueError):
+        pass
+    return None
+
+
 def tools_of(topic):
     """The verified tools list of an AI-tools topic, else None."""
     try:
@@ -214,9 +227,20 @@ def render(content, topic=None):
     tools = tools_of(topic)
     # 10-tool lists may run to 88 s (YouTube/Instagram); website parts stay under Facebook's 60 s
     max_seconds = MAX_SECONDS_TOOLS if tools and str(topic["source"]).startswith("tools:") else MAX_SECONDS
-    scene_pages = scene_labels = None
+    scene_pages = scene_labels = scene_focus = None
     card = page = page_url = None
-    if tools:  # one scene per tool: its homepage live in a browser window, labelled "#i/N  Name"
+    sections = sections_of(topic)
+    is_sites = bool(topic) and str(topic["source"]).startswith("sites:")
+    if tools and sections and len(tools) == 1:
+        # one website, guided tour: every scene on its page; the camera glides and zooms to each section
+        site = tools[0]
+        shot = browser.capture(site["url"], out / "assets", any_site=True, max_css_height=2600)
+        if shot and len(texts) == len(sections) + 3:  # hook, description, one per section, outro
+            scene_pages = [(shot, site["url"])] * len(texts)
+            scene_focus = [None, None] + [s["box"] for s in sections] + [None]
+            part = json.loads(topic["raw"] or "{}").get("part", 1)
+            scene_labels = [f"Part {part}  ·  {site['name']}"] * len(texts)
+    elif tools:  # one scene per tool: its homepage live in a browser window, labelled "#i/N  Name"
         n = len(tools)
         scene_pages = [None] + [(browser.capture(t["url"], out / "assets", any_site=True, max_css_height=2600),
                                  t["url"]) for t in tools] + [None]
@@ -239,7 +263,7 @@ def render(content, topic=None):
         del scenes[-2]
         if clips:
             del clips[-2]
-        for lst in (scene_pages, scene_labels):
+        for lst in (scene_pages, scene_labels, scene_focus):
             if lst:
                 del lst[-2]
     total = sum(d for _, d in scenes)
@@ -258,7 +282,10 @@ def render(content, topic=None):
         cmd = ["ffmpeg", "-y", "-loglevel", "error"]
         for p, _ in clips:
             cmd += ["-i", str(p)]
-        parts = "".join(f"[{i}:a]aresample=44100,apad=whole_dur={scenes[i][1]:.3f}[a{i}];" for i in range(len(clips)))
+        # 15 ms fade in/out per clip: no clicks or pops where one sentence ends and the next starts
+        parts = "".join(
+            f"[{i}:a]aresample=44100,afade=t=in:d=0.015,afade=t=out:st={max(0.0, clips[i][1] - 0.02):.3f}:d=0.02,"
+            f"apad=whole_dur={scenes[i][1]:.3f}[a{i}];" for i in range(len(clips)))
         fc = parts + "".join(f"[a{i}]" for i in range(len(clips))) + f"concat=n={len(clips)}:v=0:a=1,apad[aout]"
         cmd += ["-filter_complex", fc, "-map", "[aout]", "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "128k", str(audio)]
         subprocess.run(cmd, check=True, timeout=300)
@@ -274,7 +301,8 @@ def render(content, topic=None):
     proc = subprocess.Popen(enc, stdin=subprocess.PIPE)
     try:
         for raw in motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT"), page, page_url,
-                                 scene_pages=scene_pages, scene_labels=scene_labels):
+                                 scene_pages=scene_pages, scene_labels=scene_labels, scene_focus=scene_focus,
+                                 disclaimer=DISCLAIMER if is_sites else None):
             proc.stdin.write(raw)
         proc.stdin.close()
         if proc.wait(timeout=600) != 0:

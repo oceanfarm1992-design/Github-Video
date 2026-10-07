@@ -6,11 +6,14 @@ across parts. Catalog rules: legitimate, lawful, useful or surprising sites only
 bypass, people-search / face-search, open-camera, hacking or anything that invades privacy.
 """
 import logging
+import re
 import time
+from pathlib import Path
 
 from . import config, db
 from .http import url_ok
-from .tools import describe, shows_in_browser
+from .generate import clean_claim
+from .tools import describe, shorten, shows_in_browser
 
 log = logging.getLogger("sites")
 SERIES = "Websites that feel illegal to know"
@@ -52,10 +55,76 @@ def next_part(conn):
     return conn.execute("SELECT COUNT(*) FROM topics WHERE source LIKE 'sites:%'").fetchone()[0] + 1
 
 
+SKIP_HEADINGS = re.compile(r"cookie|privacy|newsletter|subscribe|sign ?(in|up)|log ?in|menu|footer|download (our|the) app|"
+                           r"contact|terms|faq|follow us|get started|pricing", re.I)
+
+
+def pick_sections(raw_sections, description, limit=4):
+    """The page's own sections worth narrating: heading + one sentence of its text, in page order."""
+    out, seen = [], set()
+    for s in raw_sections:
+        heading = clean_claim(s.get("heading", ""), limit=80)
+        text = clean_claim((s.get("text") or "").split(". ")[0], limit=300)
+        if not heading or not text or SKIP_HEADINGS.search(heading):
+            continue
+        heading = heading.rstrip(".")
+        key = heading.lower()
+        if key in seen or text.rstrip(".").lower() in description.lower():
+            continue
+        w, h = s["box"][2], s["box"][3]
+        if w < 60 or h < 12 or h > 900:
+            continue
+        seen.add(key)
+        out.append({"heading": heading, "text": shorten(text, 110), "box": s["box"]})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def build_single(conn, part):
+    """One website per video: its homepage explored section by section (camera zooms into each)."""
+    from . import browser
+    used = used_urls(conn)
+    for name, url in CATALOG:
+        if url in used:
+            continue
+        try:
+            if not url_ok(url):
+                continue
+            desc = describe(name, url)
+            if not desc or not shows_in_browser(url):
+                log.info("site %s skipped (no description or cannot be shown)", name)
+                continue
+            page = browser.capture(url, Path(config.OUT_DIR) / "assets", any_site=True, max_css_height=2600)
+            sections = pick_sections(browser.sections_for(page), desc) if page else []
+            if len(sections) < 2:  # too little on the page to narrate a whole video
+                log.info("site %s: only %d usable sections, skipped", name, len(sections))
+                continue
+        except Exception as e:
+            log.info("site %s skipped: %s", name, e)
+            continue
+        site = {"name": name, "url": url, "description": desc}
+        title = f"{SERIES} - Part {part}: {name}"
+        tid = db.sha(f"sites:part-{part}:{db.today()}")[:16]
+        claims = [{"text": f"{name}: {desc}", "source": url}] + \
+                 [{"text": f"{s['heading']}: {s['text']}", "source": url} for s in sections]
+        conn.execute(
+            """INSERT OR IGNORE INTO topics (id,title,source,url,published_at,discovered_at,content_hash,raw,summary,
+            claims,source_urls,score,confidence,status,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (tid, title, f"sites:part-{part}", url, db.now_iso(), db.now_iso(), db.sha(f"sites:part-{part}"),
+             db.js({"series": SERIES, "part": part, "tools": [site], "sections": sections}), title,
+             db.js(claims), db.js([url]), 90, 100, "QUEUED", time.time()))
+        return tid
+    log.warning("no catalog site left with enough content for part %d", part)
+    return None
+
+
 def build(conn, count=None, part=None):
     """Verify the next unused sites and queue Part N. Returns the topic id or None."""
     count = count or config.SITES_PER_VIDEO
     part = part or next_part(conn)
+    if count == 1:
+        return build_single(conn, part)
     used = used_urls(conn)
     items = []
     for name, url in CATALOG:

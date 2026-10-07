@@ -194,9 +194,43 @@ class Panel:
         img.paste(self.page.crop((0, y, CARD_W, y + self.view_h)), (0, self.BAR))
         return img
 
+    def frame_at(self, cx, cy, zoom, spot=None, strength=0.0):
+        """Camera view centred on (cx, cy) in page pixels, magnified by `zoom` (1 = full width).
+        spot: (x, y, w, h) page-pixel box to spotlight (rest dimmed, gold outline), faded by `strength`."""
+        if self.page.height < self.view_h:  # short page: pad so the camera window always fits
+            pad = Image.new("RGB", (CARD_W, self.view_h), (13, 17, 23))
+            pad.paste(self.page, (0, 0))
+            self.page = pad
+        ww, hh = CARD_W / zoom, self.view_h / zoom
+        cx = min(max(cx, ww / 2), CARD_W - ww / 2)
+        cy = min(max(cy, hh / 2), self.page.height - hh / 2)
+        x0, y0 = cx - ww / 2, cy - hh / 2
+        view = self.page.resize((CARD_W, self.view_h), Image.BILINEAR, box=(x0, y0, x0 + ww, y0 + hh))
+        if spot and strength > 0.01:
+            sx, sy, sw, sh = spot
+            r = [(sx - x0) * zoom - 14, (sy - y0) * zoom - 14, (sx + sw - x0) * zoom + 14, (sy + sh - y0) * zoom + 14]
+            shade = Image.new("L", view.size, int(150 * strength))
+            ImageDraw.Draw(shade).rounded_rectangle(r, 18, fill=0)
+            view = Image.composite(Image.new("RGB", view.size, (0, 0, 0)), view, shade)
+            gold = tuple(int(c * strength + 20 * (1 - strength)) for c in (255, 214, 102))
+            ImageDraw.Draw(view).rounded_rectangle(r, 18, outline=gold, width=5)
+        img = self.chrome.copy()
+        img.paste(view, (0, self.BAR))
+        return img
+
+    def target(self, box, css_width=540):
+        """Camera (cx, cy, zoom, spot) for a page box in CSS px; None = top of the page, no spotlight.
+        Zoom is gentle (text at phone width fills the page, so a strong zoom would cut words off)."""
+        if not box:
+            return CARD_W / 2, self.view_h / 2, 1.0, None
+        f = CARD_W / css_width
+        x, y, w, h = (v * f for v in box)
+        zoom = min(CARD_W * 0.98 / max(w, 1), self.view_h * 0.6 / max(h, 1), 1.6)
+        return x + w / 2, y + h / 2, max(1.12, zoom), (x, y, w, h)
+
 
 def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=None, page_url=None,
-           scene_pages=None, scene_labels=None):
+           scene_pages=None, scene_labels=None, scene_focus=None, disclaimer=None):
     """scenes: [(text, seconds)]. Yields raw RGB24 bytes, FPS per second.
     scene_pages: per scene (page_path, url) or None -> that scene shows the page in a browser window;
     consecutive scenes on the same page share one continuous scroll. Without it, a single page_path is
@@ -286,11 +320,22 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
             ty = y_card + card.h + 80
         elif kinds[si] == "scroll":
             panel = panels[page_of[si]]
-            s_start, s_end = span_of[si]
-            span = s_end - s_start
-            hold = min(0.8, span * 0.15)
-            prog = ease_in_out((t - s_start - hold) / max(0.1, span - 2 * hold))  # hold at top and bottom
-            pimg = panel.frame(prog, span)
+            if scene_focus:
+                # guided tour: glide to this scene's section and zoom in, then drift in slowly
+                prev = panel.target(scene_focus[si - 1]) if si > 0 else panel.target(None)
+                cur = panel.target(scene_focus[si])
+                move = min(1.4, (b - a) * 0.35)
+                k = ease_in_out(lt / move)
+                drift = 1 + 0.05 * max(0.0, min(1.0, (lt - move) / max(0.1, (b - a) - move)))
+                cx, cy = prev[0] + (cur[0] - prev[0]) * k, prev[1] + (cur[1] - prev[1]) * k
+                pimg = panel.frame_at(cx, cy, (prev[2] + (cur[2] - prev[2]) * k) * drift,
+                                      spot=cur[3], strength=k)  # spotlight fades in as the camera arrives
+            else:
+                s_start, s_end = span_of[si]
+                span = s_end - s_start
+                hold = min(0.8, span * 0.15)
+                prog = ease_in_out((t - s_start - hold) / max(0.1, span - 2 * hold))  # hold at top and bottom
+                pimg = panel.frame(prog, span)
             m = panel.mask.point(lambda v, e=e: int(v * e)) if e < 1 else panel.mask
             img.paste(pimg, (MARGIN, y_panel + int(70 * (1 - e))), m)
             ty = y_panel + panel.h + 60
@@ -308,4 +353,11 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         if alpha < 1:
             al = al.point(lambda v, k=alpha: int(v * k))
         img.paste(Image.merge("RGB", (r, g, bl)), (MARGIN, ty + int(36 * (1 - fade_in))), al)
+        if disclaimer and t < 2.4:  # small on-screen note for the first ~2 s, not spoken
+            a_ = 1 - ease_in_out((t - 1.8) / 0.6)
+            if a_ > 0:
+                df = font(30)
+                dw = df.getlength(disclaimer)
+                col = tuple(int(c * a_ + bc * (1 - a_)) for c, bc in zip((210, 215, 230), BG_BOT))
+                ImageDraw.Draw(img).text(((W - dw) / 2, H - 190), disclaimer, font=df, fill=col)
         yield img.tobytes()

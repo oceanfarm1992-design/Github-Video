@@ -28,7 +28,7 @@ PRIORITY_SCORE = _i("PRIORITY_SCORE", 90)
 DAILY_GITHUB_VIDEOS = _i("DAILY_GITHUB_VIDEOS", 2)
 DAILY_NEWS_VIDEOS = _i("DAILY_NEWS_VIDEOS", 0)   # AI news replaced by the websites series (set 1 to bring it back)
 DAILY_SITES_VIDEOS = _i("DAILY_SITES_VIDEOS", 1)   # "Websites that feel illegal to know - Part N"
-SITES_PER_VIDEO = _i("SITES_PER_VIDEO", 5)
+SITES_PER_VIDEO = _i("SITES_PER_VIDEO", 1)  # 1 = one site per video, explored section by section
 DAILY_TOOLS_VIDEOS = _i("DAILY_TOOLS_VIDEOS", 1)   # "N AI tools for <category>" videos
 TOOLS_PER_VIDEO = _i("TOOLS_PER_VIDEO", 10)
 # at most this many videos per produce run; two daily produce slots catch up if GitHub drops one schedule

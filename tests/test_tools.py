@@ -132,6 +132,25 @@ class ToolsTests(unittest.TestCase):
         finally:
             zernio._call, zernio.account, zernio.create_automation = olds
 
+    def test_guided_tour_spotlight_and_disclaimer(self):
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "page.png")
+        Image.new("RGB", (1080, 3000), (200, 200, 200)).save(p)
+        scenes = [("Hook.", 2.5), ("Section one.", 2.0)]
+        box = [20, 600, 500, 80]  # CSS px
+        out = list(motion.frames(scenes, scene_pages=[(p, "https://s.example")] * 2, scene_focus=[None, box],
+                                 disclaimer="For educational purposes only"))
+        img = lambda fi: Image.frombytes("RGB", (motion.W, motion.H), out[fi])
+        early, late = img(int(0.5 * motion.FPS)), img(int(2.4 * motion.FPS))
+        # disclaimer is drawn only at the start, in the bottom area
+        region = (200, motion.H - 195, 880, motion.H - 150)
+        self.assertNotEqual(early.crop(region).tobytes(), late.crop(region).tobytes())
+        # by the end of scene 2 the page outside the spotlight is dimmed (grey 200 -> darker)
+        self.assertLess(img(len(out) - 1).getpixel((motion.W // 2, 400))[0], 150)
+        panel = motion.Panel(p, "https://s.example", 1000)
+        self.assertEqual(panel.target(None)[2:], (1.0, None))
+        self.assertGreaterEqual(panel.target(box)[2], 1.12)
+
     def test_frames_show_a_different_page_per_scene_with_labels(self):
         d = tempfile.mkdtemp()
         pages = []

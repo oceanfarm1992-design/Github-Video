@@ -191,6 +191,14 @@ def sites_script(row):
     """Script for a websites part: hook, one beat per verified site, legal disclaimer in the outro."""
     raw = json.loads(row["raw"] or "{}")
     items = raw.get("tools", [])
+    if raw.get("sections") and len(items) == 1:  # one site, explored section by section
+        site = items[0]
+        hook = f"Websites that feel illegal to know. Part {raw.get('part', 1)}: {site['name']}."
+        beats = [f"{site['name']}. {site['description']}"]
+        for s in raw["sections"]:
+            text = s["text"]
+            beats.append(text if text.lower().startswith(s["heading"].lower()) else f"{s['heading']}. {text}")
+        return hook, beats, f"Here's the link: {site['url']}"
     hook = f"Websites that feel illegal to know. Part {raw.get('part', 1)}."
     beats = [f"{i}. {t['name']}: {t['description']}" for i, t in enumerate(items, 1)]
     links = "Here are the links:\n" + "\n".join(f"{i}. {t['name']} - {t['url']}" for i, t in enumerate(items, 1))
@@ -233,7 +241,9 @@ def run(conn):
             elif kind(row["source"]) == "sites":  # same: each site's own description, no LLM rewrite
                 hook, beats, response = sites_script(row)
                 cta = "LINK"
-                outro = f"All 100% legal. Comment {cta} and I'll send you all {len(beats)} links."
+                outro = (f"All 100% legal. Comment {cta} and I'll send you the link."
+                         if response.startswith("Here's the link: ") else
+                         f"All 100% legal. Comment {cta} and I'll send you all {len(beats)} links.")
             else:
                 hook, beats = template_script(row, claims)
                 try:

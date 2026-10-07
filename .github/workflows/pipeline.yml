@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "collect | research | tools | sites | produce | draft | engage | preview | zernio | analyze | all"
+        description: "collect | research | tools | sites | produce | draft | engage | preview | zernio | voicetest | analyze | all"
         default: collect
       max_videos:
         description: "Override MAX_VIDEOS_PER_DAY for this run (optional)"
@@ -52,7 +52,7 @@ jobs:
       DAILY_GITHUB_VIDEOS: ${{ vars.DAILY_GITHUB_VIDEOS || '2' }}
       DAILY_NEWS_VIDEOS: ${{ vars.DAILY_NEWS_VIDEOS || '0' }}
       DAILY_SITES_VIDEOS: ${{ vars.DAILY_SITES_VIDEOS || '1' }}
-      SITES_PER_VIDEO: ${{ vars.SITES_PER_VIDEO || '5' }}
+      SITES_PER_VIDEO: ${{ vars.SITES_PER_VIDEO || '1' }}
       DAILY_TOOLS_VIDEOS: ${{ vars.DAILY_TOOLS_VIDEOS || '1' }}
       TOOLS_PER_VIDEO: ${{ vars.TOOLS_PER_VIDEO || '10' }}
       GENERATE_SCORE_NEWS: ${{ vars.GENERATE_SCORE_NEWS || '65' }}
@@ -89,7 +89,7 @@ jobs:
             *)               s="${{ github.event.inputs.stage || 'collect' }}" ;;
           esac
           echo "name=$s" >> "$GITHUB_OUTPUT"
-          case "$s" in produce|all|preview|draft) echo "heavy=true" >> "$GITHUB_OUTPUT" ;; *) echo "heavy=false" >> "$GITHUB_OUTPUT" ;; esac
+          case "$s" in produce|all|preview|draft|voicetest) echo "heavy=true" >> "$GITHUB_OUTPUT" ;; *) echo "heavy=false" >> "$GITHUB_OUTPUT" ;; esac
 
       - name: Cache voice-clone models
         if: ${{ vars.VOICE_REF_REPO != '' && steps.stage.outputs.heavy == 'true' }}

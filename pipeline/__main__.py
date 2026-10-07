@@ -3,7 +3,7 @@ import argparse
 import logging
 import sys
 
-from . import analytics, db, engage, preview, zernio_check, discover, tools, sites, filter as filt, generate, publish, qc, render, research, score
+from . import analytics, db, engage, preview, zernio_check, discover, tools, sites, voicetest, filter as filt, generate, publish, qc, render, research, score
 
 STAGES = {
     "collect": ["discover", "filter"],           # every 30-60 min: cheap metadata
@@ -12,6 +12,7 @@ STAGES = {
     "engage": ["engage"],                         # every 30 min: answer keyword comments
     "draft": ["tools", "sites", "generate", "render", "qc"],         # make + check videos, never publishes
     "preview": ["preview"],                      # sample render, never publishes
+    "voicetest": ["voicetest"],                   # cloned-voice A/B samples, never publishes
     "zernio": ["zernio"],                         # read-only: list Zernio accounts + automations
     "analyze": ["analytics"],                    # daily/weekly
     "all": ["discover", "filter", "research", "score", "tools", "sites", "generate", "render", "qc", "publish", "engage", "analytics"],
@@ -23,6 +24,8 @@ def run_stage(name, conn):
         return discover.run(conn)
     if name == "filter":
         return filt.run(conn)
+    if name == "voicetest":
+        return voicetest.run(conn)
     if name == "tools":
         return tools.run(conn)
     if name == "sites":
