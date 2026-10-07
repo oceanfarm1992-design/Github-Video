@@ -130,5 +130,51 @@ class EngageTests(unittest.TestCase):
         self.assertEqual(status, {"c1": "replied", "c2": "replied", "c3": "skipped", "c4": "skipped", "c5": "skipped"})
 
 
+class DmFallbackTests(unittest.TestCase):
+    def test_keyword_comment_gets_dm_unless_automation_already_sent_it(self):
+        fake = FakeSupa()
+        conn = db.connect(os.path.join(tempfile.mkdtemp(), "z.db"))
+        conn.execute("INSERT INTO topics (id,title,source,url,claims,status) VALUES ('t1','Repo','github','https://g/r','[]','PUBLISHED')")
+        conn.execute("INSERT INTO contents (id,topic_id,status) VALUES (1,'t1','qc_passed')")
+        conn.execute("INSERT INTO cta_map VALUES (1,'GITHUB','t1','Here''s the link: https://g/r')")
+        conn.execute("INSERT INTO posts (platform,post_id,content_id,published_at,status,url) VALUES ('instagram','zp1',1,?,'PUBLISHED','')",
+                     (db.now_iso(),))
+        comments = [
+            {"comment_id": "k1", "author_id": "a1", "author_name": "A", "body": "github please", "is_owner": False},
+            {"comment_id": "k2", "author_id": "a2", "author_name": "B", "body": "GITHUB", "is_owner": False},
+        ]
+        dms, public = [], []
+
+        def fake_private(pid, plat, cid, text):
+            if cid == "k2":
+                return "already"  # the Zernio automation got there first
+            dms.append((cid, text))
+            return "sent"
+
+        patches = {
+            (supa, "configured"): fake.configured, (supa, "select"): fake.select, (supa, "upsert"): fake.upsert,
+            (supa, "insert_once"): fake.insert_once, (supa, "update"): fake.update, (supa, "delete"): fake.delete,
+            (engage.zernio, "available"): lambda plat: True, (engage.zernio, "enabled"): lambda: True,
+            (engage.zernio, "list_comments"): lambda pid, plat: iter(comments),
+            (engage.zernio, "private_reply"): fake_private,
+            (engage.zernio, "reply_comment"): lambda pid, plat, cid, text: public.append((cid, text)),
+        }
+        engage.REPLY_DELAY = (0, 0)
+        olds = {k: getattr(*k) for k in patches}
+        try:
+            for k, v in patches.items():
+                setattr(k[0], k[1], v)
+            stats = engage.run(conn)
+        finally:
+            for k, v in olds.items():
+                setattr(k[0], k[1], v)
+        self.assertEqual(dms, [("k1", "Here's the link: https://g/r")])
+        self.assertEqual(public, [("k1", "Check your inbox, thank you!")])
+        self.assertEqual(stats["replies"], 1)
+        status = {e["comment_id"]: (e["status"], e.get("error")) for e in fake.t["comment_events"]}
+        self.assertEqual(status["k1"][0], "replied")
+        self.assertEqual(status["k2"], ("skipped", "DM already sent by automation"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -152,6 +152,12 @@ def run(conn):
         log.info("Supabase not configured; skipping engage")
         return 0
     synced = sync_links(conn)
+    # older runs skipped keyword comments as "handled by DM automation"; re-open them so the DM fallback
+    # below can check whether the automation really sent one (Instagram automations may never trigger)
+    try:
+        supa.delete("comment_events", error="eq.keyword: handled by DM automation")
+    except Exception as e:
+        log.warning("could not re-open keyword comments: %s", e)
     since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - LOOKBACK_DAYS * 86400))
     posts = conn.execute("SELECT platform, post_id FROM posts WHERE status='PUBLISHED' AND published_at>=?",
                          (since,)).fetchall()
@@ -200,15 +206,17 @@ def run(conn):
             reason = prefilter(c)
             if not reason and c["author_id"] and c["author_id"] in replied_authors:
                 reason = "author already answered"  # one reply per person per video, also within this batch
-            if not reason and via_zernio and matches(c["body"], link["keyword"]):
-                reason = "keyword: handled by DM automation"  # Zernio comment automation sends the DM
             if reason:
                 supa.update("comment_events", {"status": "skipped", "error": reason}, id=f"eq.{ev['id']}")
                 stats["skipped"] += 1
                 continue
             if c["author_id"]:
                 replied_authors.add(c["author_id"])  # reserve: later comments from this person are skipped
-            if matches(c["body"], link["keyword"]) or LINK_ASK_RE.search(c["body"] or ""):
+            if via_zernio and matches(c["body"], link["keyword"]):
+                # DM fallback: Meta allows ONE private reply per comment, so if the Zernio automation already
+                # sent the DM this returns "already" and nothing is duplicated
+                todo.append((c, ev["id"], link["response"], "dm"))
+            elif matches(c["body"], link["keyword"]) or LINK_ASK_RE.search(c["body"] or ""):
                 text = ("Thanks! The link is in the description." if plat == "youtube"
                         else f"Thanks! Comment {link['keyword']} and check your inbox for the link.")
                 todo.append((c, ev["id"], text, "keyword"))
@@ -238,7 +246,17 @@ def run(conn):
                 supa.delete("comment_events", id=f"eq.{evid}")  # forget it so the next run picks it up again
                 continue
             try:
-                if plat == "youtube":
+                if kind == "dm":
+                    if zernio.private_reply(pid, plat, c["comment_id"], text) == "already":
+                        supa.update("comment_events", {"status": "skipped", "error": "DM already sent by automation"},
+                                    id=f"eq.{evid}")
+                        stats["skipped"] += 1
+                        continue
+                    try:  # the public half of the automation: tell them to look in their inbox
+                        zernio.reply_comment(pid, plat, c["comment_id"], zernio.PUBLIC_REPLY)
+                    except Exception as e:
+                        log.warning("public 'check your inbox' reply failed for %s: %s", c["comment_id"], e)
+                elif plat == "youtube":
                     yt_reply(token, c["comment_id"], text)
                 elif via_zernio:
                     zernio.reply_comment(pid, plat, c["comment_id"], text)

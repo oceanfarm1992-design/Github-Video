@@ -154,3 +154,35 @@ def reply_comment(zernio_post_id, platform, comment_id, text):
          "Idempotency-Key": key}
     request(f"{BASE}/inbox/comments/{zernio_post_id}", headers=h, method="POST", attempts=2,
             data=json.dumps({"accountId": acct["_id"], "message": text, "commentId": comment_id}).encode())
+
+
+_platform_ids = None
+
+
+def platform_post_id(zernio_post_id):
+    """Instagram media / Facebook post id for a Zernio post (the private-reply endpoint needs it).
+    Read from our comment automations, which carry both ids; falls back to the Zernio id."""
+    global _platform_ids
+    if _platform_ids is None:
+        try:
+            data = _call("/comment-automations")
+            items = data.get("automations", data.get("data", data)) if isinstance(data, dict) else data
+            _platform_ids = {a.get("postId"): a.get("platformPostId") for a in items if a.get("postId")}
+        except Exception as e:
+            log.warning("could not map platform post ids: %s", e)
+            _platform_ids = {}
+    return _platform_ids.get(zernio_post_id) or zernio_post_id
+
+
+def private_reply(zernio_post_id, platform, comment_id, text):
+    """Send the commenter a DM (Meta private reply). Meta allows ONE per comment, within 7 days.
+    Returns "sent", or "already" when that comment's private reply was used (e.g. by the automation)."""
+    acct = account(platform)
+    pid = platform_post_id(zernio_post_id)
+    try:
+        _call(f"/inbox/comments/{pid}/{comment_id}/private-reply", {"accountId": acct["_id"], "message": text[:1000]})
+        return "sent"
+    except RuntimeError as e:
+        if "privateReplyConsumed" in str(e):
+            return "already"
+        raise
