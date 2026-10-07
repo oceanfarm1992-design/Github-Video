@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import browser, config, db, motion
+from . import browser, config, db, motion, music
 from .http import request
 
 log = logging.getLogger("render")
@@ -28,6 +28,27 @@ MAX_SECONDS_TOOLS = 88.0  # tools lists: YouTube Shorts + Instagram Reels (90 s)
 
 
 DISCLAIMER = os.environ.get("DISCLAIMER_TEXT", "For educational purposes only")
+
+
+MUSIC_VOLUME = os.environ.get("MUSIC_VOLUME", "0.22")  # music level before ducking (1.0 = full)
+
+
+def mix_music(voice, track, total, dest):
+    """Voice + music: music fades in/out and is pushed down (sidechain) whenever the voice speaks."""
+    fade_out = max(0.0, total - 1.5)
+    mus = (f"aresample=44100,volume={MUSIC_VOLUME},afade=t=in:d=1.0,"
+           f"afade=t=out:st={fade_out:.3f}:d=1.5")
+    if voice:
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(voice), "-i", str(track), "-filter_complex",
+               f"[1:a]{mus}[m];[0:a]aresample=44100,asplit=2[v][sc];"
+               "[m][sc]sidechaincompress=threshold=0.02:ratio=6:attack=20:release=400[md];"
+               "[v][md]amix=inputs=2:duration=first:normalize=0[aout]",
+               "-map", "[aout]", "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "160k", str(dest)]
+    else:
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(track), "-af", mus,
+               "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "160k", str(dest)]
+    subprocess.run(cmd, check=True, timeout=300)
+    return dest
 
 
 def sections_of(topic):
@@ -289,6 +310,14 @@ def render(content, topic=None):
         fc = parts + "".join(f"[a{i}]" for i in range(len(clips))) + f"concat=n={len(clips)}:v=0:a=1,apad[aout]"
         cmd += ["-filter_complex", fc, "-map", "[aout]", "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "128k", str(audio)]
         subprocess.run(cmd, check=True, timeout=300)
+
+    # 1b) synthetic background music (hacker / horror), ducked under the voice
+    style = music.style_for(topic["source"] if topic else "")
+    if style != "off":
+        try:
+            audio = mix_music(audio, music.track(style, total, out / "audio"), total, out / "audio" / f"{h}.mix.m4a")
+        except Exception as e:  # music is a nice-to-have; never lose the video over it
+            log.warning("background music skipped: %s", e)
 
     # 2) animated frames piped straight into the encoder (fade in/out to black, audio fades too)
     fade = f"fade=t=in:st=0:d=0.4,fade=t=out:st={total - 0.5:.3f}:d=0.5,format=yuv420p"
