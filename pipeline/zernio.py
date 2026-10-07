@@ -109,22 +109,41 @@ def _profile_id(acct):
     return p.get("_id") if isinstance(p, dict) else p
 
 
-def dm_messages(title, response):
+FIRST_NAME_TOKEN = "{{first_name}}"  # Zernio fills this from the commenter (Facebook provides real names)
+
+
+def first_name(display_name):
+    """A real first name from a commenter's display name, or None for usernames like 'ai_fan_92'."""
+    name = (display_name or "").strip()
+    first = name.split()[0] if name else ""
+    if not re.fullmatch(r"[A-Za-zÀ-ɏ'\-]{2,20}", first):
+        return None
+    if " " not in name and not first[0].isupper():  # single lowercase word: almost always a username
+        return None
+    return first[0].upper() + first[1:]
+
+
+def dm_messages(title, response, name=None):
     """Conversational DM wordings (first = main, rest = rotation). A bare, identical link message from a
-    Page someone never chatted with is what Messenger files as spam; a greeting, context and an invitation
-    to reply look like a conversation, and a reply moves the thread to the main inbox."""
+    Page someone never chatted with is what Messenger files as spam; a greeting with their name, context
+    and an invitation to reply look like a conversation, and a reply moves the thread to the main inbox.
+    name: the commenter's first name, Zernio's {{first_name}} token, or None (no name in the greeting)."""
     short = title.split("/")[-1] if "/" in title and " " not in title else title
     short = short if len(short) <= 60 else short[:57].rsplit(" ", 1)[0] + "..."
     if response.startswith("Here's the link: "):
         body = "here's the link you asked for:\n" + response.split("Here's the link: ", 1)[1]
     else:  # tools video: numbered list of links
         body = "here are the links you asked for:\n" + response.split(":\n", 1)[-1]
+    if name:
+        hi, hey, thanks = f"Hi {name}!", f"Hey {name},", f"Thanks for your comment, {name}!"
+    else:
+        hi, hey, thanks = "Hi!", "Hey,", "Thanks for your comment!"
     return [
-        f"Hi! Thanks for commenting on our video about {short} \U0001F64C\n\nAs promised, {body}\n\n"
+        f"{hi} Thanks for commenting on our video about {short} \U0001F64C\n\nAs promised, {body}\n\n"
         "Any questions? Just reply here, I read every message.",
-        f"Hey, thanks for watching our {short} video!\n\n{body[0].upper() + body[1:]}\n\n"
+        f"{hey} thanks for watching our {short} video!\n\n{body[0].upper() + body[1:]}\n\n"
         "Reply and tell me what you think of it.",
-        f"Thanks for your comment! \U0001F60A\n\nFor the {short} video, {body}\n\n"
+        f"{thanks} \U0001F60A\n\nFor the {short} video, {body}\n\n"
         "Want more like this? Reply YES and I'll keep you posted.",
     ]
 
@@ -135,7 +154,8 @@ def create_automation(platform, acct, platform_post_id, zernio_post_id, c):
     if not cta or not (platform_post_id or zernio_post_id):
         return
     scope = {"platformPostId": platform_post_id} if platform_post_id else {"postId": zernio_post_id}
-    msgs = dm_messages(c["title"], cta["response"])
+    # Facebook gives commenters' real names; Instagram often only a username, so no name there
+    msgs = dm_messages(c["title"], cta["response"], FIRST_NAME_TOKEN if platform == "facebook" else None)
     _call("/comment-automations", {**scope,
         "profileId": _profile_id(acct),
         "accountId": acct["_id"],

@@ -216,7 +216,8 @@ def run(conn):
                 # DM fallback: Meta allows ONE private reply per comment, so if the Zernio automation already
                 # sent the DM this returns "already" and nothing is duplicated
                 facts = topic_facts(conn, plat, pid)
-                variants = zernio.dm_messages(facts[0] if facts else "this", link["response"])
+                variants = zernio.dm_messages(facts[0] if facts else "this", link["response"],
+                                              zernio.first_name(c.get("author_name")))
                 todo.append((c, ev["id"], random.choice(variants), "dm"))
             elif matches(c["body"], link["keyword"]) or LINK_ASK_RE.search(c["body"] or ""):
                 text = ("Thanks! The link is in the description." if plat == "youtube"

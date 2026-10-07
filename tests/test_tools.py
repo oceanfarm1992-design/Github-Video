@@ -80,6 +80,15 @@ class ToolsTests(unittest.TestCase):
         self.assertIsNone(publish.already_published("youtube", "t1"))
         publish.record_published("youtube", "t1", "v1", "u")  # must not raise
 
+    def test_dm_greets_by_first_name_only_for_real_names(self):
+        from pipeline import zernio
+        self.assertEqual(zernio.first_name("Irshan Sareef"), "Irshan")
+        self.assertEqual(zernio.first_name("Sara"), "Sara")
+        for username in ("ai_fan_92", "ainews987", "sara", "", None, "\U0001F525\U0001F525"):
+            self.assertIsNone(zernio.first_name(username), username)
+        self.assertTrue(zernio.dm_messages("o/r", "Here's the link: https://x", "Irshan")[0].startswith("Hi Irshan!"))
+        self.assertTrue(zernio.dm_messages("o/r", "Here's the link: https://x")[0].startswith("Hi! Thanks"))
+
     def test_zernio_duplicate_409_is_recorded_as_published(self):
         from pipeline import zernio
         err = ('request failed https://zernio.com/api/v1/posts: HTTP Error 409: Conflict - {"error":"This exact '
