@@ -80,6 +80,27 @@ class ToolsTests(unittest.TestCase):
         self.assertIsNone(publish.already_published("youtube", "t1"))
         publish.record_published("youtube", "t1", "v1", "u")  # must not raise
 
+    def test_zernio_duplicate_409_is_recorded_as_published(self):
+        from pipeline import zernio
+        err = ('request failed https://zernio.com/api/v1/posts: HTTP Error 409: Conflict - {"error":"This exact '
+               'content is already scheduled, publishing, or was posted","details":{"existingPostId":"abc123"}}')
+
+        def boom(*a, **k):
+            raise RuntimeError(err)
+
+        made = []
+        olds = (zernio._call, zernio.account, zernio.create_automation)
+        zernio._call = boom
+        zernio.account = lambda p: {"_id": "acct1", "profileId": {"_id": "prof1"}}
+        zernio.create_automation = lambda *a: made.append(a[3])
+        try:
+            c = {"caption": "Hook?\n\nSource: https://x", "hashtags": '["#AI"]', "title": "t",
+                 "_cta": {"keyword": "GITHUB", "response": "Here's the link: https://x"}}
+            self.assertEqual(zernio.publish_reel("facebook", c, "https://v/x.mp4"), ("abc123", ""))
+            self.assertEqual(made, ["abc123"])  # the DM automation is still set up for the existing post
+        finally:
+            zernio._call, zernio.account, zernio.create_automation = olds
+
     def test_frames_show_a_different_page_per_scene_with_labels(self):
         d = tempfile.mkdtemp()
         pages = []

@@ -12,13 +12,13 @@ log = logging.getLogger("http")
 UA = "ai-news-pipeline/1.0 (+https://github.com)"
 
 
-def request(url, headers=None, data=None, method=None, attempts=3):
+def request(url, headers=None, data=None, method=None, attempts=3, timeout=None):
     h = {"User-Agent": UA, **(headers or {})}
     last = None
     for i in range(attempts):
         try:
             req = urllib.request.Request(url, headers=h, data=data, method=method)
-            with urllib.request.urlopen(req, timeout=config.HTTP_TIMEOUT) as r:
+            with urllib.request.urlopen(req, timeout=timeout or config.HTTP_TIMEOUT) as r:
                 return r.status, dict(r.headers), r.read()
         except urllib.error.HTTPError as e:
             if e.code == 304:

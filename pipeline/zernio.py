@@ -5,6 +5,7 @@ Zernio is a third-party aggregator that calls the platforms' official APIs on ou
 """
 import json
 import logging
+import re
 import os
 
 from .http import request
@@ -17,10 +18,12 @@ def enabled():
     return bool(os.environ.get("ZERNIO_API_KEY"))
 
 
-def _call(path, body=None, method=None):
+def _call(path, body=None, method=None, timeout=None, idempotency_key=None):
     h = {"Authorization": f"Bearer {os.environ['ZERNIO_API_KEY']}", "Content-Type": "application/json"}
+    if idempotency_key:  # a retried request replays the first response instead of posting twice
+        h["Idempotency-Key"] = idempotency_key
     _, _, r = request(BASE + path, headers=h, method=method or ("POST" if body is not None else "GET"),
-                      data=json.dumps(body).encode() if body is not None else None, attempts=2)
+                      data=json.dumps(body).encode() if body is not None else None, attempts=2, timeout=timeout)
     return json.loads(r or b"{}")
 
 
@@ -66,7 +69,23 @@ def publish_reel(platform, c, video_url):
         "platforms": [{"platform": platform, "accountId": acct["_id"], "platformSpecificData": data}],
         "publishNow": True,
     }
-    post = _call("/posts", body).get("post", {})
+    import uuid
+    key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"post|{acct['_id']}|{video_url}"))
+    try:
+        # publishNow uploads the video before answering: allow 3 minutes (a 20 s timeout plus an automatic
+        # retry once created a duplicate request that Zernio rejected with 409)
+        post = _call("/posts", body, timeout=180, idempotency_key=key).get("post", {})
+    except RuntimeError as e:
+        existing = re.search(r'"existingPostId"\s*:\s*"([^"]+)"', str(e))
+        if "409" not in str(e) or not existing:
+            raise
+        # Zernio: this exact content is already on this account (an earlier attempt succeeded) -> record it
+        log.info("%s: already posted as %s; recording it instead of failing", platform, existing.group(1))
+        try:
+            create_automation(platform, acct, None, existing.group(1), c)
+        except Exception as ae:
+            log.warning("comment automation for %s failed: %s", existing.group(1), ae)
+        return existing.group(1), ""
     plat = next((p for p in post.get("platforms", []) if p.get("platform") == platform), {})
     # "processing"/"scheduled"/"publishing" are normal in-flight states; only explicit failures raise.
     if plat.get("status") in ("failed", "error", "rejected") or (plat.get("errorMessage") and plat.get("status") != "published"):
