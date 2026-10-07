@@ -130,6 +130,30 @@ class EngageTests(unittest.TestCase):
         self.assertEqual(status, {"c1": "replied", "c2": "replied", "c3": "skipped", "c4": "skipped", "c5": "skipped"})
 
 
+class QuotaTests(unittest.TestCase):
+    def test_due_throttles_per_platform_and_age(self):
+        conn = db.connect(os.path.join(tempfile.mkdtemp(), "q.db"))
+        now = db.now_iso()
+        old = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5 * 86400))
+        self.assertTrue(engage.due(conn, "youtube", "v1", now))
+        db.kv_set(conn, "checked:youtube:v1", str(time.time()))
+        self.assertFalse(engage.due(conn, "youtube", "v1", now))          # checked < 2 h ago
+        db.kv_set(conn, "checked:youtube:v1", str(time.time() - 3 * 3600))
+        self.assertTrue(engage.due(conn, "youtube", "v1", now))
+        self.assertFalse(engage.due(conn, "youtube", "v2", old))          # YouTube: only 3 days
+        self.assertTrue(engage.due(conn, "instagram", "i1", old))         # Meta: 7 days
+        self.assertFalse(engage.due(conn, "tiktok", "t1", now))           # no comment API in use
+
+    def test_prune_drops_old_cache_keeps_history(self):
+        conn = db.connect(os.path.join(tempfile.mkdtemp(), "p.db"))
+        conn.execute("INSERT INTO http_cache VALUES ('u-old',NULL,NULL,'x',?)", (time.time() - 10 * 86400,))
+        conn.execute("INSERT INTO http_cache VALUES ('u-new',NULL,NULL,'x',?)", (time.time(),))
+        conn.execute("INSERT INTO topics (id,title,source,url,status) VALUES ('t','t','github','u','SKIPPED')")
+        self.assertEqual(db.prune(conn), 1)
+        self.assertEqual([r[0] for r in conn.execute("SELECT url FROM http_cache")], ["u-new"])
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM topics").fetchone()[0], 1)
+
+
 class DmFallbackTests(unittest.TestCase):
     def test_keyword_comment_gets_dm_unless_automation_already_sent_it(self):
         fake = FakeSupa()

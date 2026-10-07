@@ -1,13 +1,10 @@
 name: pipeline
 
 on:
-  schedule:
-    - cron: "17 * * * *"      # hourly: collect cheap metadata
-    - cron: "*/30 * * * *"    # every 30 min: answer comments
-    - cron: "43 */4 * * *"    # every 4h: research + score candidates (+ queue an AI-tools video)
-    - cron: "5 9 * * *"       # produce slot 1: generate, render, QC, publish (max 2 videos per run)
-    - cron: "5 14 * * *"      # produce slot 2: the rest of the daily mix; also catches up a dropped slot
-    - cron: "30 6 * * *"      # daily: analytics + learning
+  # Triggered by cron-job.org (reliable, on time) through workflow_dispatch: engage every 30 min, collect
+  # hourly at :17, research every 4 h, produce 09:05 + 14:05 UTC, analyze 06:30 UTC. GitHub's own `schedule`
+  # was removed: it fired late and rarely, and a late scheduled run could cancel a queued produce run
+  # (one concurrency group keeps only one pending run).
   workflow_dispatch:
     inputs:
       stage:

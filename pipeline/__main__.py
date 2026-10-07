@@ -76,6 +76,12 @@ def main(argv=None):
             except Exception as e:  # a stage failure must not prevent later stages from resuming
                 log.error("stage %s failed: %s", s, e)
             conn.commit()
+        try:  # keep the public state database small
+            if db.prune(conn):
+                conn.commit()
+                conn.execute("VACUUM")
+        except Exception as e:
+            log.warning("prune failed: %s", e)
         log.info("status: %s", stats(conn))
     return 0
 

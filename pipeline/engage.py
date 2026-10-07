@@ -147,6 +147,24 @@ def ai_replies(conn, title, facts, comments):
     return res
 
 
+YT_REPLIES_PER_DAY = int(os.environ.get("YT_REPLIES_PER_DAY", "25"))  # 50 quota units each
+# how often each post's comments are read, and for how long after publishing (API quota):
+# YouTube: 10,000 units/day and an upload costs 1,600; Meta allows private replies only for 7 days
+CHECK_EVERY_MIN = {"youtube": 120, "facebook": 60, "instagram": 60}
+CHECK_FOR_DAYS = {"youtube": 3, "facebook": 7, "instagram": 7}
+
+
+def due(conn, platform, post_id, published_at):
+    """Should this post's comments be read in this run?"""
+    if platform not in CHECK_EVERY_MIN:
+        return False  # TikTok / Pinterest: no comment API in use
+    age_cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - CHECK_FOR_DAYS[platform] * 86400))
+    if (published_at or "") < age_cutoff:
+        return False
+    last = float(db.kv_get(conn, f"checked:{platform}:{post_id}") or 0)
+    return time.time() - last >= CHECK_EVERY_MIN[platform] * 60
+
+
 def run(conn):
     if not supa.configured():
         log.info("Supabase not configured; skipping engage")
@@ -159,26 +177,36 @@ def run(conn):
     except Exception as e:
         log.warning("could not re-open keyword comments: %s", e)
     since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - LOOKBACK_DAYS * 86400))
-    posts = conn.execute("SELECT platform, post_id FROM posts WHERE status='PUBLISHED' AND published_at>=?",
+    posts = conn.execute("SELECT platform, post_id, published_at FROM posts WHERE status='PUBLISHED' AND published_at>=?",
                          (since,)).fetchall()
     day_start = db.today() + "T00:00:00Z"
     sent_today = len(supa.select("comment_events", status="eq.replied", replied_at=f"gte.{day_start}", select="id"))
-    token = own = None
-    stats = {"links_synced": synced, "replies": 0, "skipped": 0, "failed": 0}
+    yt_today = len(supa.select("comment_events", platform="eq.youtube", status="eq.replied",
+                               replied_at=f"gte.{day_start}", select="id"))
+    token = None
+    own = db.kv_get(conn, "youtube_channel_id")  # cached: channels.list is not worth a quota unit every run
+    stats = {"links_synced": synced, "replies": 0, "skipped": 0, "failed": 0, "not_due": 0}
 
     for p in posts:
         plat, pid = p["platform"], p["post_id"]
         budget = min(MAX_REPLIES_PER_RUN - stats["replies"], MAX_REPLIES_PER_DAY - sent_today)
         if budget <= 0:
             break
+        if not due(conn, plat, pid, p["published_at"]):
+            stats["not_due"] += 1
+            continue
         link = (supa.select("cta_links", platform=f"eq.{plat}", post_id=f"eq.{pid}") or [None])[0]
         if not link:
             continue
+        if plat == "youtube" and yt_today >= YT_REPLIES_PER_DAY:
+            continue  # YouTube API quota: uploads come first
         via_zernio = plat in ("facebook", "instagram") and zernio.available(plat) and not pid.startswith("manual-")
         try:
             if plat == "youtube":
                 token = token or youtube_token()
-                own = own or yt_own_channel(token)
+                if not own:
+                    own = yt_own_channel(token)
+                    db.kv_set(conn, "youtube_channel_id", own or "")
                 comments = list(yt_comments(pid, token, own))
             elif via_zernio:
                 comments = list(zernio.list_comments(pid, plat))
@@ -189,6 +217,7 @@ def run(conn):
         except Exception as e:
             log.warning("fetch comments %s/%s failed: %s", plat, pid, e)
             continue
+        db.kv_set(conn, f"checked:{plat}:{pid}", str(time.time()))
 
         can_ai = plat == "youtube" or via_zernio
         replied_authors = {e["author_id"] for e in supa.select(

@@ -71,7 +71,10 @@ def youtube_upload(token, c, links=None):
     meta = {"snippet": {"title": youtube_title(c),
                         "description": desc + "\n\n" + " ".join(json.loads(c["hashtags"])),
                         "categoryId": "28"},
-            "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}}
+            # containsSyntheticMedia: the narration is an AI clone of the owner's voice (YouTube's
+            # "altered or synthetic content" disclosure)
+            "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False,
+                       "containsSyntheticMedia": True}}
     data = open(c["video_path"], "rb").read()
     _, hdr, _ = request(
         "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
