@@ -1,0 +1,100 @@
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "t.db")
+
+from PIL import Image  # noqa: E402
+
+from pipeline import generate, motion, publish, tools  # noqa: E402
+
+TOOLS_ROW = {"title": "3 AI tools for video generation", "source": "tools:video", "url": "https://a.example",
+             "raw": json.dumps({"phrase": "video generation", "hashtag": "#AIVideo", "tools": [
+                 {"name": "Alpha", "url": "https://a.example", "description": "Make videos from text."},
+                 {"name": "Beta", "url": "https://b.example", "description": "Edit clips with AI."},
+                 {"name": "Gamma", "url": "https://c.example", "description": "Animate photos."}]})}
+
+
+class ToolsTests(unittest.TestCase):
+    def test_shorten_cuts_at_natural_break_and_never_ends_on_filler(self):
+        s = tools.shorten("Plan, generate, iterate, and refine, keeping full context across every stage of creation")
+        self.assertTrue(s.endswith("stage."), s)
+        self.assertLessEqual(len(s), tools.SPOKEN_LIMIT + 1)
+        self.assertEqual(tools.shorten("Short and sweet"), "Short and sweet.")
+
+    def test_dead_and_low_information_descriptions_are_rejected(self):
+        self.assertTrue(tools.DEAD_RE.search("Understand the Sora discontinuation, including content exports"))
+        self.assertTrue(tools.DEAD_RE.search("This app is shutting down on June 1"))
+        self.assertFalse(tools.DEAD_RE.search("Create videos from text in minutes"))
+        self.assertTrue(tools.LOW_INFO_RE.match("Official Synthesia site."))
+        self.assertFalse(tools.LOW_INFO_RE.match("Generate AI videos from your ideas using HeyGen."))
+
+    def test_catalog_is_well_formed(self):
+        for key, (phrase, tag, entries) in tools.CATALOG.items():
+            self.assertTrue(tag.startswith("#"), key)
+            self.assertGreaterEqual(len(entries), 10, key)  # spare tools so dead sites can be skipped
+            for name, url in entries:
+                self.assertTrue(url.startswith("https://"), (key, name))
+
+    def test_daily_mix_two_github_one_news_one_tools(self):
+        mk = lambda src, sc: {"source": src, "score": sc}
+        rows = [mk("github", 90), mk("github", 85), mk("github", 84), mk("rss:aws-ml", 70), mk("hn", 68),
+                mk("tools:video", 90)]
+        got = [(r["source"], r["score"]) for r in generate.pick(rows, 2, 1, 80, 65, 1)]
+        self.assertEqual(got, [("github", 90), ("tools:video", 90), ("github", 85), ("rss:aws-ml", 70)])
+
+    def test_tools_script_and_links(self):
+        hook, beats, links = generate.tools_script(TOOLS_ROW)
+        self.assertTrue(hook.startswith("Looking for AI tools for video generation?"))
+        self.assertIn("Here are 3", hook)
+        self.assertEqual(beats[1], "2. Beta: Edit clips with AI.")
+        self.assertIn("3. Gamma - https://c.example", links)
+        self.assertEqual(generate.hashtags(TOOLS_ROW), ["#AI", "#AITools", "#AIVideo"])
+
+    def test_github_hashtags_from_repo_topics(self):
+        row = {"source": "github", "raw": json.dumps({"topics": ["llm", "ai-agents", "x"]})}
+        self.assertEqual(generate.hashtags(row), ["#AI", "#OpenSource", "#GitHub", "#Llm", "#AiAgents"])
+
+    def test_youtube_title_uses_hook_and_link_block(self):
+        c = {"hook": "Want a free, open-source tool for AI agents?", "title": "owner/repo"}
+        self.assertEqual(publish.youtube_title(c), "Want a free, open-source tool for AI agents? #Shorts")
+        self.assertLessEqual(len(publish.youtube_title({"hook": "x " * 80, "title": "t"})), 100)
+        self.assertEqual(publish.link_block("Here's the link: https://x.io"), "Link: https://x.io")
+        self.assertTrue(publish.link_block("Here are the links:\n1. A - https://a").startswith("Here are the links"))
+
+    def test_social_caption_for_tools_asks_for_all_links(self):
+        c = {"caption": "Looking for AI tools?\n\nWhich one would you try first?\n\nSource: https://a.example",
+             "hashtags": '["#AI"]', "_cta": {"keyword": "TOOL", "response": "Here are the links:\n1. A - https://a"}}
+        cap = publish.social_caption(c)
+        self.assertIn("Comment TOOL and I'll DM you all the links", cap)
+        self.assertIn("Which one would you try first?", cap)
+        self.assertNotIn("http", cap)
+
+    def test_publish_guard_without_supabase_falls_back_to_local(self):
+        for k in ("SUPABASE_URL", "SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_KEY"):
+            os.environ.pop(k, None)
+        self.assertIsNone(publish.already_published("youtube", "t1"))
+        publish.record_published("youtube", "t1", "v1", "u")  # must not raise
+
+    def test_frames_show_a_different_page_per_scene_with_labels(self):
+        d = tempfile.mkdtemp()
+        pages = []
+        for i, col in enumerate(((200, 30, 30), (30, 200, 30))):
+            p = os.path.join(d, f"p{i}.png")
+            Image.new("RGB", (1080, 3000), col).save(p)
+            pages.append((p, f"https://site{i}.example"))
+        scenes = [("Hook?", 1.0), ("1. A: one.", 1.0), ("2. B: two.", 1.0), ("Bye.", 1.0)]
+        out = list(motion.frames(scenes, scene_pages=[None, pages[0], pages[1], None],
+                                 scene_labels=[None, "#1/2  A", "#2/2  B", None]))
+        self.assertEqual(len(out), 4 * motion.FPS)
+        mid = lambda fi: Image.frombytes("RGB", (motion.W, motion.H), out[fi]).getpixel((motion.W // 2, 700))
+        self.assertGreater(mid(int(1.9 * motion.FPS))[0], 150)   # scene 2 shows the red page
+        self.assertGreater(mid(int(2.9 * motion.FPS))[1], 150)   # scene 3 shows the green page
+
+
+if __name__ == "__main__":
+    unittest.main()

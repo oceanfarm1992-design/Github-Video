@@ -34,6 +34,17 @@ create index if not exists comment_events_status on comment_events (status);
 alter table comment_events add column if not exists kind text;        -- keyword | ai
 alter table comment_events add column if not exists reply_text text;  -- exactly what was posted
 
+-- Durable publish log: checked before every upload, so a lost pipeline state can never cause a re-post
+create table if not exists published_posts (
+  platform     text not null,
+  topic_id     text not null,
+  post_id      text not null,
+  url          text,
+  published_at timestamptz not null default now(),
+  primary key (platform, topic_id)
+);
+alter table published_posts enable row level security;
+
 -- Lock the tables: only the service-role key (used by the pipeline) can access them.
 alter table cta_links enable row level security;
 alter table comment_events enable row level security;

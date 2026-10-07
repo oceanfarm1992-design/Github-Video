@@ -26,7 +26,9 @@ Every stage resumes from DB state; failures retry with exponential backoff (10 m
    - `ZERNIO_API_KEY` - preferred for Facebook/Instagram: publishes Reels through [Zernio](https://docs.zernio.com) and creates a keyword -> DM comment automation per post (replaces the direct Meta credentials below and the built-in Meta DM replies; Zernio is a third-party service)
    - `META_PAGE_ID`, `META_PAGE_ACCESS_TOKEN`, `META_IG_USER_ID` – Facebook Page Reels + Instagram Reels (Meta Graph API; the IG account must be a Business/Creator account linked to the Page)
    - `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` â€“ YouTube Data API (Shorts upload)
-4. Daily mix: `DAILY_GITHUB_VIDEOS` (default 2) + `DAILY_NEWS_VIDEOS` (default 2), with score bars `GENERATE_SCORE` (80, GitHub) and `GENERATE_SCORE_NEWS` (65, news).
+4. Daily mix (4 videos, made in two produce slots at 09:05 and 14:05 UTC, max 2 per run): `DAILY_GITHUB_VIDEOS` (2), `DAILY_NEWS_VIDEOS` (1), `DAILY_TOOLS_VIDEOS` (1); score bars `GENERATE_SCORE` (75, GitHub) and `GENERATE_SCORE_NEWS` (65, news).
+   AI-tools videos ("10 AI tools for video generation"): one catalog category per video (`pipeline/tools.py`), each tool's homepage opened in Chromium and described only with its own site description; dead or empty sites are skipped. `TOOLS_PER_VIDEO` (10). Facebook is skipped for videos over 60 s (Reels limit); YouTube and Instagram get the full video.
+   Preview a tools video without publishing: Actions -> pipeline -> Run workflow, stage `preview`, sources `tools`.
 5. Optional variables: `DAILY_AI_BUDGET_USD`, `MAX_LLM_CALLS_PER_DAY`, `MAX_VIDEOS_PER_DAY`, `MAX_RENDERS_PER_TOPIC`, `MIN_TOPIC_SCORE`, `GENERATE_SCORE`.
 6. Run **Actions â†’ pipeline â†’ Run workflow** once; schedules take over (hourly collect, 4-hourly research, daily produce/analyze).
 
@@ -45,7 +47,7 @@ The `engage` stage (every 30 min) answers follower comments automatically, on Yo
 - The CTA keyword on Facebook/Instagram is answered by Zernio's comment-to-DM automation (created at publish time).
 - All other comments are answered by the cheap model in one batched call per video, using only the video's sourced facts; replies are 4-25 words, no links/hashtags/@mentions.
 - Safeguards: one reply per person per video, `MAX_REPLIES_PER_RUN` (40) and `MAX_REPLIES_PER_DAY` (150) caps, random 1.5-4 s spacing, LLM budget caps, idempotent reply log.
-- Comment events (personal data) live only in Supabase (RLS locked), never in the public `data` branch. Run `supabase/schema.sql` (safe to re-run) and add `SUPABASE_URL` + `SUPABASE_SECRET_KEY`.
+- Comment events (personal data) live only in Supabase (RLS locked), never in the public `data` branch. Run `supabase/schema.sql` (safe to re-run; it now also creates `published_posts`, the durable guard against re-posting) and add `SUPABASE_URL` + `SUPABASE_SECRET_KEY`.
 - YouTube replies need the `youtube.force-ssl` scope: re-run `python tools/youtube_auth.py` once.
 - Posts published before Zernio ids were stored (`manual-*`) cannot be answered on Facebook/Instagram.
 

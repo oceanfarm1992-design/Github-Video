@@ -13,9 +13,6 @@ log = logging.getLogger("generate")
 
 # USD per 1M tokens (input, output) for the default small model.
 PRICE = {"claude-haiku-4-5-20251001": (1.0, 5.0)}
-HASHTAGS = ["#AI", "#OpenSource", "#GitHub", "#MachineLearning"]
-
-
 def pick_cta(row):
     if row["github_url"] or row["source"] == "github":
         return "GITHUB", row["github_url"] or row["url"]
@@ -133,7 +130,9 @@ def _day_start():
 
 
 def kind(source):
-    return "github" if source == "github" else "news"
+    if source == "github":
+        return "github"
+    return "tools" if source.startswith("tools:") else "news"
 
 
 def videos_today(conn, which=None):
@@ -143,9 +142,11 @@ def videos_today(conn, which=None):
     return sum(1 for r in rows if which is None or kind(r["source"]) == which)
 
 
-def pick(rows, gh_room, news_room, min_gh, min_news):
+def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0):
     """Top-scoring rows per category, within each category's remaining daily room and score bar."""
-    out, room, bar = [], {"github": gh_room, "news": news_room}, {"github": min_gh, "news": min_news}
+    out = []
+    room = {"github": gh_room, "news": news_room, "tools": tools_room}
+    bar = {"github": min_gh, "news": min_news, "tools": 0}
     for r in sorted(rows, key=lambda r: -r["score"]):
         k = kind(r["source"])
         if room[k] > 0 and r["score"] >= bar[k]:
@@ -154,8 +155,41 @@ def pick(rows, gh_room, news_room, min_gh, min_news):
     return out
 
 
+def hashtags(row):
+    """Topic-specific hashtags (better discovery than a fixed set), max 5."""
+    raw = json.loads(row["raw"] or "{}")
+    k = kind(row["source"])
+    if k == "tools":
+        tags = ["#AI", "#AITools", raw.get("hashtag") or "#Tech"]
+    elif k == "github":
+        tags = ["#AI", "#OpenSource", "#GitHub"]
+        for t in raw.get("topics", [])[:6]:
+            tag = "#" + re.sub(r"[^A-Za-z0-9]", "", t.title())
+            if 3 < len(tag) <= 25 and tag.lower() not in {x.lower() for x in tags}:
+                tags.append(tag)
+    else:
+        tags = ["#AI", "#AINews", "#Tech"]
+    return tags[:5]
+
+
+def tools_script(row):
+    """Script for an AI-tools video: question hook, one beat per verified tool, and the links list."""
+    raw = json.loads(row["raw"] or "{}")
+    tools = raw.get("tools", [])
+    n = len(tools)
+    hook = f"Looking for AI tools for {raw.get('phrase', 'your work')}? Here are {n}."
+    beats = [f"{i}. {t['name']}: {t['description']}" for i, t in enumerate(tools, 1)]
+    links = "Here are the links:\n" + "\n".join(f"{i}. {t['name']} - {t['url']}" for i, t in enumerate(tools, 1))
+    return hook, beats, links
+
+
+def caption_question(row):
+    """Ends every caption with a question: comments are the strongest engagement signal."""
+    return "Which one would you try first?" if kind(row["source"]) == "tools" else "Would you use this?"
+
+
 def run(conn):
-    room = config.MAX_VIDEOS_PER_DAY - videos_today(conn)
+    room = min(config.MAX_VIDEOS_PER_DAY - videos_today(conn), config.MAX_VIDEOS_PER_RUN)
     if room <= 0:
         return 0
     rows = conn.execute("SELECT * FROM topics WHERE status='QUEUED' AND renders<?",
@@ -165,31 +199,37 @@ def run(conn):
         rows = [r for r in rows if r["source"].split(":")[0] in wanted]
     rows = pick(rows, config.DAILY_GITHUB_VIDEOS - videos_today(conn, "github"),
                 config.DAILY_NEWS_VIDEOS - videos_today(conn, "news"),
-                config.GENERATE_SCORE, min(config.GENERATE_SCORE, config.GENERATE_SCORE_NEWS))[:room]
+                config.GENERATE_SCORE, min(config.GENERATE_SCORE, config.GENERATE_SCORE_NEWS),
+                config.DAILY_TOOLS_VIDEOS - videos_today(conn, "tools"))[:room]
     n = 0
     for row in rows:
         try:
             db.set_status(conn, row["id"], "GENERATING")
             claims = json.loads(row["claims"] or "[]")
-            hook, beats = template_script(row, claims)
-            try:
-                rewritten = llm_rewrite(conn, row, claims)
-            except Exception as e:  # LLM is optional; fall back to the template
-                log.warning("llm failed (%s); using template", e)
-                rewritten = None
-            if rewritten:
-                hook, beats = rewritten["hook"], rewritten["beats"]
-            cta, resource = pick_cta(row)
-            outro = f"Comment {cta} and I'll send you the link."  # works on every platform
+            if kind(row["source"]) == "tools":  # facts come from each tool's own site; no LLM rewrite
+                hook, beats, response = tools_script(row)
+                cta = "TOOL"
+                outro = f"Comment {cta} and I'll send you all {len(beats)} links."
+            else:
+                hook, beats = template_script(row, claims)
+                try:
+                    rewritten = llm_rewrite(conn, row, claims)
+                except Exception as e:  # LLM is optional; fall back to the template
+                    log.warning("llm failed (%s); using template", e)
+                    rewritten = None
+                if rewritten:
+                    hook, beats = rewritten["hook"], rewritten["beats"]
+                cta, resource = pick_cta(row)
+                response = f"Here's the link: {resource}"
+                outro = f"Comment {cta} and I'll send you the link."  # works on every platform
             script = " ".join([hook] + beats + [outro])
-            caption = f"{hook}\n\nSource: {row['url']}"
+            caption = f"{hook}\n\n{caption_question(row)}\n\nSource: {row['url']}"
             cur = conn.execute(
                 """INSERT INTO contents (topic_id,hook,script,title,caption,hashtags,cta_keyword,sources,
                 duration_target,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (row["id"], hook, db.js({"hook": hook, "beats": beats, "outro": outro}), row["title"][:90],
-                 caption, db.js(HASHTAGS), cta, row["source_urls"], 45, "ready", time.time()))
-            conn.execute("INSERT INTO cta_map VALUES (?,?,?,?)",
-                         (cur.lastrowid, cta, row["id"], f"Here's the link: {resource}"))
+                 caption, db.js(hashtags(row)), cta, row["source_urls"], 45, "ready", time.time()))
+            conn.execute("INSERT INTO cta_map VALUES (?,?,?,?)", (cur.lastrowid, cta, row["id"], response))
             db.set_status(conn, row["id"], "RENDERING")
             n += 1
         except Exception as e:

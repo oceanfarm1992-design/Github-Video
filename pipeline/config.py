@@ -22,11 +22,15 @@ MAX_LLM_CALLS_PER_DAY = _i("MAX_LLM_CALLS_PER_DAY", 100)
 MAX_VIDEOS_PER_DAY = _i("MAX_VIDEOS_PER_DAY", 10)
 MAX_RENDERS_PER_TOPIC = _i("MAX_RENDERS_PER_TOPIC", 2)
 MIN_TOPIC_SCORE = _i("MIN_TOPIC_SCORE", 65)
-GENERATE_SCORE = _i("GENERATE_SCORE", 80)
+GENERATE_SCORE = _i("GENERATE_SCORE", 75)  # GitHub bar; real scores top out near 80
 PRIORITY_SCORE = _i("PRIORITY_SCORE", 90)
 # Daily mix: N GitHub-project videos + N AI-news videos (news items score lower, so a lower bar).
 DAILY_GITHUB_VIDEOS = _i("DAILY_GITHUB_VIDEOS", 2)
-DAILY_NEWS_VIDEOS = _i("DAILY_NEWS_VIDEOS", 2)
+DAILY_NEWS_VIDEOS = _i("DAILY_NEWS_VIDEOS", 1)
+DAILY_TOOLS_VIDEOS = _i("DAILY_TOOLS_VIDEOS", 1)   # "N AI tools for <category>" videos
+TOOLS_PER_VIDEO = _i("TOOLS_PER_VIDEO", 10)
+# at most this many videos per produce run; two daily produce slots catch up if GitHub drops one schedule
+MAX_VIDEOS_PER_RUN = _i("MAX_VIDEOS_PER_RUN", 2)
 GENERATE_SCORE_NEWS = _i("GENERATE_SCORE_NEWS", 65)
 HTTP_TIMEOUT = _i("HTTP_TIMEOUT", 20)
 MAX_ATTEMPTS = _i("MAX_ATTEMPTS", 3)

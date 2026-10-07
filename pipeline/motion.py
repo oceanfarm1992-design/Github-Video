@@ -195,10 +195,13 @@ class Panel:
         return img
 
 
-def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=None, page_url=None):
+def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=None, page_url=None,
+           scene_pages=None, scene_labels=None):
     """scenes: [(text, seconds)]. Yields raw RGB24 bytes, FPS per second.
-    With a page capture, the middle scenes show it scrolling in a browser window; the first and last
-    scenes show the preview card (or the page too, when there is no card)."""
+    scene_pages: per scene (page_path, url) or None -> that scene shows the page in a browser window;
+    consecutive scenes on the same page share one continuous scroll. Without it, a single page_path is
+    shown on the middle scenes and the preview card on the first and last (GitHub videos).
+    scene_labels: per scene short label drawn above the visual (e.g. "#3/10  Runway")."""
     total = sum(d for _, d in scenes)
     n = round(total * FPS)
     env = envelope(audio_path, n)
@@ -211,12 +214,12 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         d.text(((W - wlen) / 2, H - 120), watermark, font=f, fill=(110, 120, 150))
 
     last = len(scenes) - 1
-    kinds = []
-    for i in range(len(scenes)):
-        if page_path and (0 < i < last or not card):
-            kinds.append("scroll")
-        else:
-            kinds.append("card" if card else "text")
+    if scene_pages is None:
+        scene_pages = [(page_path, page_url) if page_path and (0 < i < last or not card) else None
+                       for i in range(len(scenes))]
+    labels = scene_labels or [None] * len(scenes)
+    fallback = "card" if card else "text"
+    kinds = ["scroll" if scene_pages[i] else fallback for i in range(len(scenes))]
 
     bounds, t0 = [], 0.0
     for text, dur in scenes:
@@ -229,22 +232,32 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
 
     if card:
         y_card = max(260, (H - (card.h + 80 + max_h("card"))) // 2 - 40)
-    panel = None
+    y_panel = 250 if any(labels) else 230
+    panels = {}
     if "scroll" in kinds:
-        y_panel = 230
-        ph = max(700, min(1180, H - y_panel - 60 - max_h("scroll") - 200))
-        try:
-            panel = Panel(page_path, page_url or "", ph)
-        except Exception:
-            panel = None
-            kinds = ["card" if card else "text" if k == "scroll" else k for k in kinds]
-    if panel:
-        idx = [i for i, k in enumerate(kinds) if k == "scroll"]
-        s_start, s_end = bounds[idx[0]][0], bounds[idx[-1]][1]
-    # first frame time of each contiguous run of a visual, for entrance animations
-    run_start = [bounds[i][0] if i == 0 or kinds[i] != kinds[i - 1] else None for i in range(len(scenes))]
-    for i in range(1, len(scenes)):
-        run_start[i] = run_start[i] if run_start[i] is not None else run_start[i - 1]
+        ph = max(700, min(1150, H - y_panel - 60 - max_h("scroll") - 200))
+        for i, k in enumerate(kinds):
+            if k == "scroll" and scene_pages[i][0] not in panels:
+                try:
+                    panels[scene_pages[i][0]] = Panel(scene_pages[i][0], scene_pages[i][1] or "", ph)
+                except Exception:
+                    panels[scene_pages[i][0]] = None
+        kinds = [k if k != "scroll" or panels.get(scene_pages[i][0]) else fallback for i, k in enumerate(kinds)]
+    page_of = [scene_pages[i][0] if kinds[i] == "scroll" else None for i in range(len(scenes))]
+    # scroll span per run of consecutive scenes on the same page; entrance animation at each new visual
+    span_of, run_start = [None] * len(scenes), []
+    for i in range(len(scenes)):
+        new = i == 0 or kinds[i] != kinds[i - 1] or page_of[i] != page_of[i - 1]
+        run_start.append(bounds[i][0] if new else run_start[i - 1])
+    i = 0
+    while i < len(scenes):
+        j = i
+        while j + 1 < len(scenes) and page_of[i] and page_of[j + 1] == page_of[i]:
+            j += 1
+        for k in range(i, j + 1):
+            span_of[k] = (bounds[i][0], bounds[j][1])
+        i = j + 1
+    label_font = font(52)
 
     starts = [word_starts(t, dur - 0.4) for t, dur in scenes]
     layers = {}
@@ -258,6 +271,9 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         idraw = ImageDraw.Draw(img)
         idraw.rectangle([MARGIN, 120, MARGIN + int((W - 2 * MARGIN) * (t / total)), 132], fill=(90, 160, 255))
         e = ease_out((t - run_start[si]) / 0.6)              # entrance: rise + fade in
+        if labels[si]:  # e.g. "#3/10  Runway": which item we are on, above the visual
+            idraw.text((MARGIN, 150 + int(30 * (1 - e))), labels[si], font=label_font,
+                       fill=(255, 214, 102) if e >= 1 else tuple(int(c * e) for c in (255, 214, 102)))
 
         if kinds[si] == "card":
             c = card.frame(t / total, env[fi])
@@ -269,8 +285,11 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
             img.paste(c, (MARGIN, yy), m)
             ty = y_card + card.h + 80
         elif kinds[si] == "scroll":
+            panel = panels[page_of[si]]
+            s_start, s_end = span_of[si]
             span = s_end - s_start
-            prog = ease_in_out((t - s_start - 0.8) / max(0.1, span - 1.6))  # hold at top and bottom
+            hold = min(0.8, span * 0.15)
+            prog = ease_in_out((t - s_start - hold) / max(0.1, span - 2 * hold))  # hold at top and bottom
             pimg = panel.frame(prog, span)
             m = panel.mask.point(lambda v, e=e: int(v * e)) if e < 1 else panel.mask
             img.paste(pimg, (MARGIN, y_panel + int(70 * (1 - e))), m)

@@ -19,9 +19,11 @@ GRAPH = "https://graph.facebook.com/v21.0"
 def social_caption(c):
     """Facebook/Instagram caption: no link (a link in the caption kills comments). The keyword comment
     triggers the DM with the link, which is what drives engagement."""
-    kw = (c.get("_cta") or {}).get("keyword") if isinstance(c, dict) else None
+    cta = (c.get("_cta") or {}) if isinstance(c, dict) else {}
+    kw = cta.get("keyword")
+    what = "all the links" if (cta.get("response") or "").startswith("Here are the links") else "the link"
     hook = c["caption"].split("\n\nSource:")[0].strip()
-    ask = f"\n\nComment {kw} and I'll DM you the link \U0001F4E9" if kw else ""
+    ask = f"\n\nComment {kw} and I'll DM you {what} \U0001F4E9" if kw else ""
     return hook + ask + "\n\n" + " ".join(json.loads(c["hashtags"]))
 
 
@@ -45,11 +47,28 @@ def youtube_token():
     return os.environ.get("YOUTUBE_ACCESS_TOKEN") or None
 
 
-def youtube_upload(token, c, resource_url=None):
-    """YouTube Data API v3 resumable upload. Shorts are detected by 9:16 + <=60s.
-    YouTube viewers are sent to the description, so the approved resource link goes there."""
-    desc = c["caption"] + (f"\n\nLink: {resource_url}" if resource_url else "")
-    meta = {"snippet": {"title": (c["title"] + " #Shorts")[:100],
+def link_block(response):
+    """The approved CTA response as description text: one link, or the numbered list of a tools video."""
+    if not response:
+        return ""
+    if response.startswith("Here's the link: "):
+        return "Link: " + response.split("Here's the link: ", 1)[1]
+    return response
+
+
+def youtube_title(c):
+    """The question hook makes a better Shorts title than a repo slug; YouTube allows 100 characters."""
+    base = (c.get("hook") or c["title"]).strip()
+    if len(base) > 90:
+        base = base[:87].rsplit(" ", 1)[0] + "..."
+    return f"{base} #Shorts"
+
+
+def youtube_upload(token, c, links=None):
+    """YouTube Data API v3 resumable upload. Shorts are detected by 9:16 + <=3 min.
+    YouTube viewers are sent to the description, so the approved link(s) go there."""
+    desc = c["caption"] + (f"\n\n{links}" if links else "")
+    meta = {"snippet": {"title": youtube_title(c),
                         "description": desc + "\n\n" + " ".join(json.loads(c["hashtags"])),
                         "categoryId": "28"},
             "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}}
@@ -145,7 +164,70 @@ def youtube_token_available():
                                                    and e.get("YOUTUBE_REFRESH_TOKEN")))
 
 
+def video_seconds(path):
+    try:
+        from .qc import probe
+        return float(probe(path)["format"]["duration"])
+    except Exception:
+        return 0.0
+
+
+# ------------------------------------------- durable publish log (Supabase)
+def already_published(platform, topic_id):
+    """(post_id, url) if Supabase says this topic is already on this platform. The SQLite state is
+    saved only at the end of a run, so this is the guard against re-posting after a lost save."""
+    from . import supa
+    if not supa.configured():
+        return None
+    try:
+        rows = supa.select("published_posts", platform=f"eq.{platform}", topic_id=f"eq.{topic_id}")
+        return (rows[0]["post_id"], rows[0].get("url") or "") if rows else None
+    except Exception as e:  # table missing (schema not re-run) or Supabase down: fall back to local state
+        log.warning("published_posts lookup failed (%s); relying on local state", e)
+        return None
+
+
+def record_published(platform, topic_id, post_id, url):
+    from . import supa
+    if not supa.configured():
+        return
+    try:
+        supa.upsert("published_posts", {"platform": platform, "topic_id": topic_id, "post_id": str(post_id),
+                                        "url": url, "published_at": db.now_iso()}, "platform,topic_id")
+    except Exception as e:
+        log.warning("published_posts write failed: %s", e)
+
+
+def cleanup_release_assets(days=14):
+    """Delete hosted videos older than `days` from the public `videos` release (Instagram/Facebook
+    fetch them within minutes of posting); keeps the release small and stops old files lingering."""
+    repo, token = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_TOKEN")
+    if not repo or not token:
+        return 0
+    h = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    try:
+        _, _, r = request(f"https://api.github.com/repos/{repo}/releases/tags/videos", headers=h)
+    except RuntimeError:
+        return 0
+    cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - days * 86400))
+    n = 0
+    for a in json.loads(r).get("assets", []):
+        if a.get("created_at", "") < cutoff:
+            try:
+                request(f"https://api.github.com/repos/{repo}/releases/assets/{a['id']}", method="DELETE", headers=h)
+                n += 1
+            except RuntimeError as e:
+                log.warning("could not delete old asset %s: %s", a.get("name"), e)
+    return n
+
+
 def run(conn):
+    try:
+        removed = cleanup_release_assets()
+        if removed:
+            log.info("removed %d hosted videos older than 14 days", removed)
+    except Exception as e:
+        log.warning("release cleanup failed: %s", e)
     configured = platforms()
     rows = conn.execute(
         "SELECT c.*, t.id AS tid FROM contents c JOIN topics t ON t.id=c.topic_id "
@@ -164,10 +246,15 @@ def run(conn):
             if name in done:
                 continue
             try:
-                if name == "youtube":
-                    m = conn.execute("SELECT response FROM cta_map WHERE video_id=?", (c["id"],)).fetchone()
-                    resource = m["response"].split("link: ", 1)[-1] if m else None
-                    post_id, url = youtube_upload(youtube_token(), c, resource)
+                prior = already_published(name, c["tid"])
+                if prior:  # durable guard: survives a lost local state
+                    post_id, url = prior
+                    log.info("%s already has %s on %s; recording, not re-posting", c["title"], post_id, name)
+                elif name == "facebook" and video_seconds(c["video_path"]) > 60:
+                    log.info("skip facebook for %s: longer than the 60 s Reels limit", c["title"])
+                    continue
+                elif name == "youtube":
+                    post_id, url = youtube_upload(youtube_token(), c, link_block((c.get("_cta") or {}).get("response")))
                 else:
                     video_url = video_url or public_video_url(c)
                     if not video_url:
@@ -176,6 +263,8 @@ def run(conn):
                 conn.execute(
                     "INSERT INTO posts (platform,post_id,content_id,published_at,status,url) VALUES (?,?,?,?,?,?)",
                     (name, post_id, c["id"], db.now_iso(), "PUBLISHED", url))
+                if not prior:
+                    record_published(name, c["tid"], post_id, url)
                 done.add(name)
                 n += 1
             except Exception as e:

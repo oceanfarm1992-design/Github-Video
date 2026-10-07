@@ -24,6 +24,17 @@ W, H = 1080, 1920
 WPS = 2.6  # spoken words/sec, only used when TTS is unavailable
 PAD = 0.4  # seconds of breathing room after each narrated scene
 MAX_SECONDS = 58.0  # Facebook Reels limit is 60 s
+MAX_SECONDS_TOOLS = 88.0  # tools lists: YouTube Shorts + Instagram Reels (90 s); Facebook is skipped > 60 s
+
+
+def tools_of(topic):
+    """The verified tools list of an AI-tools topic, else None."""
+    try:
+        if topic and str(topic["source"]).startswith("tools:"):
+            return json.loads(topic["raw"] or "{}").get("tools") or None
+    except (KeyError, IndexError, TypeError, ValueError):
+        pass
+    return None
 VOICE = os.environ.get("TTS_VOICE", "en-US-AndrewMultilingualNeural")
 try:  # narration speed multiplier (1.0 = natural pace)
     SPEED = min(1.4, max(0.8, float(os.environ.get("VOICE_SPEED", "1.1"))))
@@ -200,26 +211,41 @@ def render(content, topic=None):
     if mp4.exists():
         return str(mp4)  # never regenerate an unchanged asset
 
-    card = fetch_image(image_url(topic), out / "assets") if topic else None
-    page_url = None
-    if topic and os.environ.get("PAGE_SCROLL", "1") != "0":
-        page_url = next((u for u in (topic["github_url"], topic["url"]) if browser.supported(u)), None)
-    page = browser.capture(page_url, out / "assets") if page_url else None
+    tools = tools_of(topic)
+    max_seconds = MAX_SECONDS_TOOLS if tools else MAX_SECONDS
+    scene_pages = scene_labels = None
+    card = page = page_url = None
+    if tools:  # one scene per tool: its homepage live in a browser window, labelled "#i/N  Name"
+        n = len(tools)
+        scene_pages = [None] + [(browser.capture(t["url"], out / "assets", any_site=True, max_css_height=2600),
+                                 t["url"]) for t in tools] + [None]
+        scene_pages = [p if p and p[0] else None for p in scene_pages]
+        scene_labels = [None] + [f"#{i}/{n}  {t['name']}" for i, t in enumerate(tools, 1)] + [None]
+        if len(scene_pages) != len(texts):  # script and tool list disagree: show text-only scenes
+            scene_pages = scene_labels = None
+    else:
+        card = fetch_image(image_url(topic), out / "assets") if topic else None
+        if topic and os.environ.get("PAGE_SCROLL", "1") != "0":
+            page_url = next((u for u in (topic["github_url"], topic["url"]) if browser.supported(u)), None)
+        page = browser.capture(page_url, out / "assets") if page_url else None
     clips = narrate(texts, out / "audio")
     if clips:
         scenes = [(t, dur + PAD) for t, (_, dur) in zip(texts, clips)]
     else:
         scenes = [(t, max(3.0, len(t.split()) / WPS + 0.6)) for t in texts]
-    # Facebook Reels max out at 60 s: drop the last middle beat(s) instead of failing the whole video
-    while sum(d for _, d in scenes) > MAX_SECONDS and len(scenes) > 3:
+    # stay under the platform limit: drop the last middle beat(s) instead of failing the whole video
+    while sum(d for _, d in scenes) > max_seconds and len(scenes) > 3:
         del scenes[-2]
         if clips:
             del clips[-2]
+        for lst in (scene_pages, scene_labels):
+            if lst:
+                del lst[-2]
     total = sum(d for _, d in scenes)
     if total < 30:  # pad the last scene (silence) to the 30s floor
         scenes[-1] = (scenes[-1][0], scenes[-1][1] + 30 - total)
         total = 30.0
-    if total > MAX_SECONDS:
+    if total > max_seconds:
         raise RuntimeError(f"script too long for a Short: {total:.0f}s")
 
     srt(scenes, out / "video" / f"{h}.srt")
@@ -246,7 +272,8 @@ def render(content, topic=None):
             "-movflags", "+faststart", str(mp4)]
     proc = subprocess.Popen(enc, stdin=subprocess.PIPE)
     try:
-        for raw in motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT"), page, page_url):
+        for raw in motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT"), page, page_url,
+                                 scene_pages=scene_pages, scene_labels=scene_labels):
             proc.stdin.write(raw)
         proc.stdin.close()
         if proc.wait(timeout=600) != 0:
