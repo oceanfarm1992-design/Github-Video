@@ -1,6 +1,7 @@
 """Read-only Zernio diagnostic: connected accounts + comment automations. Prints no secrets."""
 import json
 import logging
+import time
 
 from . import zernio
 
@@ -42,6 +43,26 @@ def run(conn=None):
             out["automations"].append(row)
     except Exception as e:
         out["automations_error"] = str(e)[:300]
+    # outgoing DMs in the last 24 h per account: times and delivery status only (no names, no text)
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400))
+    out["dms_last_24h"] = {}
+    for a in out.get("accounts", []):
+        rows = []
+        try:
+            for folder in ("inbox", "requests"):
+                data = zernio._call(f"/inbox/conversations?accountId={a['_id']}&folder={folder}&limit=20")
+                convs = data.get("conversations", data.get("data", data)) if isinstance(data, dict) else data
+                for cv in convs or []:
+                    if (cv.get("updatedTime") or "") < since:
+                        continue
+                    m = zernio._call(f"/inbox/conversations/{cv['id']}/messages?accountId={a['_id']}")
+                    msgs = m.get("messages", m.get("data", m)) if isinstance(m, dict) else m
+                    for msg in msgs or []:
+                        if msg.get("direction") == "outgoing" and (msg.get("createdAt") or "") >= since:
+                            rows.append({"folder": folder, "at": msg.get("createdAt"), "status": msg.get("status")})
+        except Exception as e:
+            rows.append({"error": str(e)[:300]})
+        out["dms_last_24h"][a.get("platform")] = rows
     for line in json.dumps(out, indent=1).splitlines():
         log.info(line)
     return {k: (len(v) if isinstance(v, list) else v) for k, v in out.items()}
