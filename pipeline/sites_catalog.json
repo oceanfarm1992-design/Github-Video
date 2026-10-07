@@ -210,11 +210,6 @@
 "url": "https://tryhackme.com/"
 },
 {
-"name": "Hack The Box",
-"category": "Cybersecurity Learning",
-"url": "https://www.hackthebox.com/"
-},
-{
 "name": "OverTheWire",
 "category": "Cybersecurity Learning",
 "url": "https://overthewire.org/"
@@ -223,11 +218,6 @@
 "name": "picoCTF",
 "category": "Cybersecurity Learning",
 "url": "https://picoctf.org/"
-},
-{
-"name": "URLhaus",
-"category": "Security Research",
-"url": "https://urlhaus.abuse.ch/"
 },
 {
 "name": "AbuseIPDB",
@@ -583,21 +573,6 @@
 "name": "Statista",
 "category": "Data & Statistics",
 "url": "https://www.statista.com/"
-},
-{
-"name": "TradingView",
-"category": "Finance & Data",
-"url": "https://www.tradingview.com/"
-},
-{
-"name": "Yahoo Finance",
-"category": "Finance",
-"url": "https://finance.yahoo.com/"
-},
-{
-"name": "Google Finance",
-"category": "Finance",
-"url": "https://www.google.com/finance/"
 },
 {
 "name": "OpenSea",
@@ -5515,11 +5490,6 @@
 "url": "https://www.rawpixel.com/"
 },
 {
-"name": "New Old Stock",
-"category": "Vintage Photos",
-"url": "https://nos.twnsnd.co/"
-},
-{
 "name": "Public Domain Review",
 "category": "Archives",
 "url": "https://publicdomainreview.org/"
@@ -6580,11 +6550,6 @@
 "url": "https://cheatsheetseries.owasp.org/"
 },
 {
-"name": "HackTricks",
-"category": "Security Learning",
-"url": "https://book.hacktricks.xyz/"
-},
-{
 "name": "PayloadsAllTheThings",
 "category": "Security Learning",
 "url": "https://github.com/swisskyrepo/PayloadsAllTheThings"
@@ -6598,21 +6563,6 @@
 "name": "LOLBAS",
 "category": "Windows Security",
 "url": "https://lolbas-project.github.io/"
-},
-{
-"name": "Hackviser",
-"category": "Security Learning",
-"url": "https://hackviser.com/"
-},
-{
-"name": "PentesterLab",
-"category": "Security Learning",
-"url": "https://pentesterlab.com/"
-},
-{
-"name": "Pentest Playground",
-"category": "Security Learning",
-"url": "https://pentest-ground.com/"
 },
 {
 "name": "WebGoat",
@@ -6643,26 +6593,6 @@
 "name": "Root Me",
 "category": "Security Learning",
 "url": "https://www.root-me.org/"
-},
-{
-"name": "CTFtime",
-"category": "CTF Events",
-"url": "https://ctftime.org/"
-},
-{
-"name": "Packet Storm",
-"category": "Security Research",
-"url": "https://packetstormsecurity.com/"
-},
-{
-"name": "CWE",
-"category": "Security Research",
-"url": "https://cwe.mitre.org/"
-},
-{
-"name": "CAPEC",
-"category": "Security Research",
-"url": "https://capec.mitre.org/"
 },
 {
 "name": "MITRE D3FEND",
@@ -7980,16 +7910,6 @@
 "url": "https://apify.com/"
 },
 {
-"name": "Scrapy",
-"category": "Web Scraping",
-"url": "https://scrapy.org/"
-},
-{
-"name": "Beautiful Soup",
-"category": "Web Scraping",
-"url": "https://www.crummy.com/software/BeautifulSoup/"
-},
-{
 "name": "Crawlee",
 "category": "Web Crawling",
 "url": "https://crawlee.dev/"
@@ -8470,16 +8390,6 @@
 "url": "https://www.guerrillamail.com/"
 },
 {
-"name": "10 Minute Mail",
-"category": "Temporary Email",
-"url": "https://10minutemail.com/"
-},
-{
-"name": "Temp Mail",
-"category": "Temporary Email",
-"url": "https://temp-mail.org/"
-},
-{
 "name": "Mailinator",
 "category": "Testing Email",
 "url": "https://www.mailinator.com/"
@@ -8780,16 +8690,6 @@
 "url": "https://github.com/sbilly/awesome-security"
 },
 {
-"name": "Awesome Hacking",
-"category": "Security Learning",
-"url": "https://github.com/Hack-with-Github/Awesome-Hacking"
-},
-{
-"name": "Google Dorks Reference",
-"category": "Search Research",
-"url": "https://www.exploit-db.com/google-hacking-database"
-},
-{
 "name": "Wikidata Query Service",
 "category": "Knowledge Graph",
 "url": "https://query.wikidata.org/"
@@ -8878,36 +8778,6 @@
 "name": "Fixer",
 "category": "Currency API",
 "url": "https://fixer.io/"
-},
-{
-"name": "MarketWatch",
-"category": "Finance",
-"url": "https://www.marketwatch.com/"
-},
-{
-"name": "Investing.com",
-"category": "Finance",
-"url": "https://www.investing.com/"
-},
-{
-"name": "Koyfin",
-"category": "Finance",
-"url": "https://www.koyfin.com/"
-},
-{
-"name": "Finviz",
-"category": "Finance",
-"url": "https://finviz.com/"
-},
-{
-"name": "StockAnalysis",
-"category": "Finance",
-"url": "https://stockanalysis.com/"
-},
-{
-"name": "CompaniesMarketCap",
-"category": "Finance",
-"url": "https://companiesmarketcap.com/"
 },
 {
 "name": "OpenCorporates",
@@ -11005,16 +10875,6 @@
 "url": "https://www.varnish-cache.org/"
 },
 {
-"name": "WireGuard",
-"category": "VPN",
-"url": "https://www.wireguard.com/"
-},
-{
-"name": "OpenVPN",
-"category": "VPN",
-"url": "https://openvpn.net/"
-},
-{
 "name": "Tailscale",
 "category": "Networking",
 "url": "https://tailscale.com/"
@@ -11463,11 +11323,6 @@
 "name": "Fantasy Name Generators",
 "category": "Generators",
 "url": "https://www.fantasynamegenerators.com/"
-},
-{
-"name": "Fake Name Generator",
-"category": "Generators",
-"url": "https://www.fakenamegenerator.com/"
 },
 {
 "name": "Lorem Ipsum",
@@ -13075,21 +12930,6 @@
 "url": "https://www.securityfocus.com/"
 },
 {
-"name": "Full Disclosure Archive",
-"category": "Security Archive",
-"url": "https://seclists.org/fulldisclosure/"
-},
-{
-"name": "Seclists",
-"category": "Security Research",
-"url": "https://seclists.org/"
-},
-{
-"name": "HackTricks Cloud",
-"category": "Cloud Security",
-"url": "https://cloud.hacktricks.xyz/"
-},
-{
 "name": "CloudSecList",
 "category": "Cloud Security",
 "url": "https://cloudseclist.com/"
@@ -13103,11 +12943,6 @@
 "name": "Kubernetes Goat",
 "category": "Kubernetes Security",
 "url": "https://madhuakula.com/kubernetes-goat/"
-},
-{
-"name": "Damn Vulnerable Cloud Application",
-"category": "Cloud Security",
-"url": "https://github.com/m6a-UdS/dvca"
 },
 {
 "name": "OWASP Kubernetes Top 10",
@@ -13198,16 +13033,6 @@
 "name": "RingZer0",
 "category": "Security Learning",
 "url": "https://ringzer0ctf.com/"
-},
-{
-"name": "HackThisSite",
-"category": "Security Learning",
-"url": "https://www.hackthissite.org/"
-},
-{
-"name": "CTFlearn",
-"category": "Security Learning",
-"url": "https://ctflearn.com/"
 },
 {
 "name": "Pwnable.kr",
@@ -15510,11 +15335,6 @@
 "url": "https://security.stackexchange.com/"
 },
 {
-"name": "Reverse Engineering Stack Exchange",
-"category": "Security",
-"url": "https://reverseengineering.stackexchange.com/"
-},
-{
 "name": "Code Golf Stack Exchange",
 "category": "Programming",
 "url": "https://codegolf.stackexchange.com/"
@@ -15580,54 +15400,9 @@
 "url": "https://buildspace.so/"
 },
 {
-"name": "Kaiko",
-"category": "Market Data",
-"url": "https://www.kaiko.com/"
-},
-{
-"name": "Amberdata",
-"category": "Market Data",
-"url": "https://www.amberdata.io/"
-},
-{
-"name": "CoinAPI",
-"category": "Market Data API",
-"url": "https://www.coinapi.io/"
-},
-{
 "name": "Wise",
 "category": "Currency",
 "url": "https://wise.com/"
-},
-{
-"name": "Revolut",
-"category": "Finance",
-"url": "https://www.revolut.com/"
-},
-{
-"name": "PayPal",
-"category": "Payments",
-"url": "https://www.paypal.com/"
-},
-{
-"name": "Stripe",
-"category": "Payments",
-"url": "https://stripe.com/"
-},
-{
-"name": "Square",
-"category": "Payments",
-"url": "https://squareup.com/"
-},
-{
-"name": "Paddle",
-"category": "Payments",
-"url": "https://www.paddle.com/"
-},
-{
-"name": "Lemon Squeezy",
-"category": "Payments",
-"url": "https://www.lemonsqueezy.com/"
 },
 {
 "name": "Ko-fi",

@@ -89,8 +89,19 @@ class ToolsTests(unittest.TestCase):
         for good in ("Designspiration [Design]", "This Person Does Not Exist [AI Demo]", "DSPy [AI Development]",
                      "Photopea [Design]", "Radio Garden [Entertainment]", "ClearlyDefined [Software Licensing]"):
             self.assertFalse(sites.DENY.search(good), good)
+        groups = {"TradingView [Finance & Data]": "financial", "Stripe [Payments]": "financial",
+                  "Robinhood [Investing]": "financial", "NordVPN [VPN]": "proxy & anonymity",
+                  "Temp Mail [Temporary Email]": "proxy & anonymity", "Scrapy [Web Scraping]": "legal & copyright",
+                  "YouTube Downloader": "legal & copyright", "Hack The Box [Cybersecurity Learning]": "privacy & security",
+                  "Shodan [Cybersecurity]": "privacy & security", "SVG Porn [SVG]": "adult & restricted"}
+        for entry, group in groups.items():
+            self.assertEqual(sites.deny_reason(entry), group, entry)
+        for fine in ("Pexels Videos [Stock Video]", "World Bank Data [Data]", "Hacker News [Tech Community]",
+                     "Hackaday [Hardware]", "Big-O Cheat Sheet [Algorithms]", "DrugBank [Drug Research]"):
+            self.assertIsNone(sites.deny_reason(fine), fine)
         cat = sites.load_catalog()
         self.assertGreater(len(cat), 1000)
+        self.assertFalse([u for _, u in cat if "temp-mail" in u])
         self.assertEqual(cat[0][0], "Radio Garden")  # hand-picked list first
         self.assertFalse([n for n, _ in cat if sites.DENY.search(n)])
 

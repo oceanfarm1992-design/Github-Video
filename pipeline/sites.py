@@ -24,7 +24,7 @@ CATALOG = [
     ("Have I Been Pwned", "https://haveibeenpwned.com"), ("Wayback Machine", "https://web.archive.org"),
     ("MarineTraffic", "https://www.marinetraffic.com"), ("Flightradar24", "https://www.flightradar24.com"),
     ("Photopea", "https://www.photopea.com"), ("remove.bg", "https://www.remove.bg"),
-    ("Temp Mail", "https://temp-mail.org"), ("Window Swap", "https://www.window-swap.com"),
+    ("Window Swap", "https://www.window-swap.com"),
     ("EarthCam", "https://www.earthcam.com"), ("Windy", "https://www.windy.com"),
     ("earth nullschool", "https://earth.nullschool.net"), ("VirusTotal", "https://www.virustotal.com"),
     ("BuiltWith", "https://builtwith.com"), ("Downdetector", "https://downdetector.com"),
@@ -45,14 +45,48 @@ CATALOG = [
 # Safety screen for every catalog entry (also the imported list): never people-search / OSINT tracing,
 # leaks, exploits or malware, exposed-device search, open or unsecured cameras, piracy or ROMs, paywall
 # bypass, anonymity networks, gambling, adult, crypto / blockchain (financial-content risk, off-theme).
-DENY = re.compile(
-    r"osint|people ?(search|finder)|person ?(search|finder|lookup)|whatsmyname|sherlock|maltego|spiderfoot|"
-    r"harvester|recon-ng|intelx|intelligence x|geospy|face ?(search|check)|pimeyes|leakix|data ?leak|"
-    r"leak search|breach ?(search|data)|exploit|malware|phish|shodan|censys|zoomeye|insecam|webcam taxi|"
-    r"rom ?hack|\broms?\b|emulator zone|torrent|\bpira(te|cy)|warez|\bcrack|keygen|unpaywall|paywall|unblock|"
-    r"\bproxy|\btor\b|onion|dark ?web|gambl|casino|betting|adult|porn|dating|cryptocurrenc|\bcrypto\b|"
-    r"blockchain|\w*coin\b|\bdefi\b|etherscan|solscan|\bnft|doxx|stalk|\bspy\b",
-    re.I)
+DENY_GROUPS = {
+    # people-search, tracing, exposed devices and cameras, leaks, exploits, malware, hacking practice
+    "privacy & security": (
+        r"osint|people ?(search|finder)|person ?(search|finder|lookup)|whatsmyname|sherlock|maltego|spiderfoot|"
+        r"harvester|recon-ng|intelx|intelligence x|geospy|face ?(search|check|recognition)|pimeyes|"
+        r"reverse (phone|email|people)|background check|leakix|data ?leak|leak search|breach ?(search|data)|"
+        r"exploit|malware|phish|shodan|censys|zoomeye|insecam|webcam taxi|\bhack(ing|tricks|viser|thissite)?\b|"
+        r"hack the box|\bctf|pentest|penetration|vulnerab|security research|reverse engineer|seclists|"
+        r"google dork|password (crack|recover)|keylog|spyware|\bspy\b|doxx|stalk"),
+    # piracy, downloaders/converters, scraping, paywall bypass, game cheats: copyright and terms-of-service risk
+    "legal & copyright": (
+        r"torrent|\bpira(te|cy)|warez|\bcrack|keygen|serial key|rom ?hack|\broms?\b|emulator zone|"
+        r"unpaywall|paywall|downloader|\bdownload (video|music|mp3)|youtube (to|download|converter)|"
+        r"\bmp3 (convert|download)|video download|scrap(er|ing|y)\b|beautiful soup|"
+        r"\bcheats?\b(?!\s*sheet|\.sh)|cheat engine|\baimbot|captcha (solv|bypass)|bypass|undetect"),
+    # proxies, VPNs, anonymity networks, disposable identities
+    "proxy & anonymity": (
+        r"\bproxy|proxies|\bvpn\b|unblock|anonymi[sz]|\btor\b|onion|dark ?web|temp(orary)? ?mail|"
+        r"disposable (email|mail)|burner|fake (email|name|identity|id\b|address)|10 ?minute ?mail"),
+    # adult, dating, gambling, recreational drugs, weapons, alcohol, tobacco
+    "adult & restricted": (
+        r"adult|porn|\bnsfw|\bxxx|\bsex|nud(e|ity)|onlyfans|escort|hookup|dating|gambl|casino|betting|"
+        r"\bbet\b|lotter|poker|cannabis|marijuana|\bweed\b|(recreational|illegal|buy) drugs?|\bvape|tobacco|"
+        r"alcohol|firearm|\bguns?\b|weapon|ammo"),
+    # investing, trading, loans, banking, payments, insurance, tax, crypto: financial-content risk
+    # (stock PHOTO/VIDEO sites and World Bank open data are fine)
+    "financial": (
+        r"financ|fintech|invest|trading|\btrader|"
+        r"\bstocks?\b(?!\s*(photo|video|image|asset|footage|music|illustration|vector))|stockanalysis|"
+        r"market ?cap|forex|broker|\bloan|\bcredit|mortgage|banking|(?<!world )\bbank\b|payment|\bpay\b|"
+        r"wallet|insurance|\btax\b|accounting|cryptocurrenc|\bcrypto\b|blockchain|\w*coin\b|\bdefi\b|"
+        r"etherscan|solscan|\bnft|exchange rate|market data|\bwealth"),
+}
+DENY = re.compile("|".join(f"(?:{p})" for p in DENY_GROUPS.values()), re.I)
+
+
+def deny_reason(text):
+    """Which risk group blocks this entry, or None."""
+    for group, pattern in DENY_GROUPS.items():
+        if re.search(pattern, text, re.I):
+            return group
+    return None
 
 # Theme fit for "feels illegal to know": surprising, explorable, free sites first; developer
 # infrastructure last (still valid if it has content, just less of a "wow").
