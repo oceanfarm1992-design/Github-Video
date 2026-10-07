@@ -119,6 +119,19 @@ def describe(name, url):
     return shorten(first.rstrip(". ") if first.endswith("...") else first)
 
 
+def shows_in_browser(url):
+    """Capture the page now (cached for the render): a site behind a bot wall or that fails to load would
+    show a block page or nothing in the video, so it is swapped for the next catalog entry. Without
+    Chromium (local runs) this check is skipped."""
+    from pathlib import Path
+    from . import browser
+    if not browser.available():
+        return True
+    assets = Path(config.OUT_DIR) / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    return browser.capture(url, assets, any_site=True, max_css_height=2600) is not None
+
+
 def next_category(conn):
     """First catalog category not used in the last REUSE_DAYS days."""
     cutoff = time.time() - REUSE_DAYS * 86400
@@ -140,6 +153,9 @@ def build(conn, category, count=None):
                 log.info("tool %s: site not reachable, skipped", name)
                 continue
             desc = describe(name, url)
+            if desc and not shows_in_browser(url):
+                log.info("%s: page cannot be shown (bot protection or load failure), skipped", name)
+                continue
             if not desc:
                 log.info("tool %s: no site description, skipped", name)
                 continue

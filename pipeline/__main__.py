@@ -7,7 +7,7 @@ from . import analytics, db, engage, preview, zernio_check, discover, tools, sit
 
 STAGES = {
     "collect": ["discover", "filter"],           # every 30-60 min: cheap metadata
-    "research": ["filter", "research", "score", "tools", "sites"],  # every 3-6 h: only candidates
+    "research": ["filter", "research", "score"],  # every 3-6 h: only candidates
     "produce": ["tools", "sites", "generate", "render", "qc", "publish"],  # daily
     "engage": ["engage"],                         # every 30 min: answer keyword comments
     "draft": ["tools", "sites", "generate", "render", "qc"],         # make + check videos, never publishes

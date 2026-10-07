@@ -10,7 +10,7 @@ import time
 
 from . import config, db
 from .http import url_ok
-from .tools import describe
+from .tools import describe, shows_in_browser
 
 log = logging.getLogger("sites")
 SERIES = "Websites that feel illegal to know"
@@ -68,6 +68,9 @@ def build(conn, count=None, part=None):
                 log.info("site %s not reachable, skipped", name)
                 continue
             desc = describe(name, url)
+            if desc and not shows_in_browser(url):
+                log.info("%s: page cannot be shown (bot protection or load failure), skipped", name)
+                continue
             if not desc:
                 log.info("site %s: no usable description, skipped", name)
                 continue

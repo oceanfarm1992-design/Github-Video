@@ -4,6 +4,7 @@ One full-page screenshot at 2x (crisp), which motion.py scrolls through smoothly
 than recording a live browser in real time. Only public pages, no login, no interaction beyond scrolling.
 """
 import logging
+import re
 from pathlib import Path
 
 from PIL import Image
@@ -37,6 +38,21 @@ CLEAR_OVERLAYS_JS = """() => {
   document.documentElement.style.overflow = 'auto';
   document.body.style.overflow = 'auto';
 }"""
+
+
+BLOCKED_RE = re.compile(
+    r"why have i been blocked|attention required|just a moment\.\.\.|checking your browser|verify you are human|"
+    r"access denied|are you a robot|enable javascript and cookies to continue|request unsuccessful|"
+    r"unusual traffic|captcha", re.I)
+
+
+def available():
+    """True when Playwright + Chromium can be used here (heavy CI stages)."""
+    try:
+        import playwright  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def supported(url):
@@ -79,6 +95,10 @@ def capture(url, out_dir, any_site=False, max_css_height=None):
                 page.wait_for_timeout(800)
                 page.keyboard.press("Escape")  # closes most sign-up / promo modals
                 page.evaluate(CLEAR_OVERLAYS_JS)
+                text = (page.title() + " " + page.evaluate("document.body ? document.body.innerText.slice(0, 3000) : ''"))
+                if BLOCKED_RE.search(text):  # a bot-protection page, not the website: never show it in a video
+                    log.info("capture of %s hit a bot-protection page; skipped", url)
+                    return None
                 height = min(page.evaluate("document.documentElement.scrollHeight"), max_css_height)
                 page.screenshot(path=str(out), full_page=True,
                                 clip={"x": 0, "y": 0, "width": CSS_WIDTH, "height": height})
