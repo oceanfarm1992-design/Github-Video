@@ -80,6 +80,20 @@ class ToolsTests(unittest.TestCase):
         self.assertIsNone(publish.already_published("youtube", "t1"))
         publish.record_published("youtube", "t1", "v1", "u")  # must not raise
 
+    def test_outro_counts_links_not_narrated_lines(self):
+        one = generate.series_outro("LINK", "Here's the link: https://www.photopea.com", legal_note=True)
+        self.assertEqual(one, "All 100% legal. Comment LINK and I'll send you the link.")
+        many = generate.series_outro("TOOL", "Here are the links:\n1. A - https://a\n2. B - https://b")
+        self.assertEqual(many, "Comment TOOL and I'll send you all 2 links.")
+        # a one-site video narrates several lines but must still promise ONE link
+        row = {"source": "sites:part-1", "raw": json.dumps({"part": 1, "tools": [
+            {"name": "Photopea", "url": "https://www.photopea.com", "description": "Edit photos online."}],
+            "sections": [{"heading": "Fully Local", "text": "No uploads.", "box": [0, 0, 1, 1]},
+                         {"heading": "Free", "text": "No cost.", "box": [0, 0, 1, 1]}]})}
+        hook, beats, links = generate.sites_script(row)
+        self.assertEqual(len(beats), 3)
+        self.assertIn("the link", generate.series_outro("LINK", links, legal_note=True))
+
     def test_sites_series_script_quota_and_no_repeats(self):
         from pipeline import db, sites
         row = {"source": "sites:part-3", "raw": json.dumps({"part": 3, "tools": [

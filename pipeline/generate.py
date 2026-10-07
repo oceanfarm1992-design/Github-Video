@@ -205,6 +205,14 @@ def sites_script(row):
     return hook, beats, links
 
 
+def series_outro(cta, response, legal_note=False):
+    """Spoken outro that matches what the DM actually contains: one link, or all N links of a list
+    (counted from the links text, not from the number of narrated lines)."""
+    n = sum(1 for line in response.splitlines() if re.match(r"\d+\. ", line))
+    what = f"all {n} links" if n > 1 else "the link"
+    return ("All 100% legal. " if legal_note else "") + f"Comment {cta} and I'll send you {what}."
+
+
 def caption_question(row):
     """Ends every caption with a question: comments are the strongest engagement signal."""
     k = kind(row["source"])
@@ -237,13 +245,11 @@ def run(conn):
             if kind(row["source"]) == "tools":  # facts come from each tool's own site; no LLM rewrite
                 hook, beats, response = tools_script(row)
                 cta = "TOOL"
-                outro = f"Comment {cta} and I'll send you all {len(beats)} links."
+                outro = series_outro(cta, response)
             elif kind(row["source"]) == "sites":  # same: each site's own description, no LLM rewrite
                 hook, beats, response = sites_script(row)
                 cta = "LINK"
-                outro = (f"All 100% legal. Comment {cta} and I'll send you the link."
-                         if response.startswith("Here's the link: ") else
-                         f"All 100% legal. Comment {cta} and I'll send you all {len(beats)} links.")
+                outro = series_outro(cta, response, legal_note=True)
             else:
                 hook, beats = template_script(row, claims)
                 try:

@@ -28,9 +28,8 @@ def run(conn=None):
         if not tid:
             return {"error": "not enough verified sites"}
         row = mem.execute("SELECT * FROM topics WHERE id=?", (tid,)).fetchone()
-        hook, beats, _ = generate.sites_script(row)
-        script = {"hook": hook, "beats": beats,
-                  "outro": f"All 100% legal. Comment LINK and I'll send you all {len(beats)} links."}
+        hook, beats, links = generate.sites_script(row)
+        script = {"hook": hook, "beats": beats, "outro": generate.series_outro("LINK", links, legal_note=True)}
         path = render.render({"script": json.dumps(script), "title": row["title"]}, row)
     elif os.environ.get("GENERATE_SOURCES", "").strip() == "tools":
         mem = db.connect(":memory:")
@@ -38,8 +37,8 @@ def run(conn=None):
         if not tid:
             return {"error": "not enough verified tools"}
         row = mem.execute("SELECT * FROM topics WHERE id=?", (tid,)).fetchone()
-        hook, beats, _ = generate.tools_script(row)
-        script = {"hook": hook, "beats": beats, "outro": f"Comment TOOL and I'll send you all {len(beats)} links."}
+        hook, beats, links = generate.tools_script(row)
+        script = {"hook": hook, "beats": beats, "outro": generate.series_outro("TOOL", links)}
         path = render.render({"script": json.dumps(script), "title": row["title"]}, row)
     else:
         path = render.render({"script": json.dumps(SAMPLE), "title": "QingYunA/answer-me-with-html"}, TOPIC)
