@@ -183,6 +183,7 @@ def private_reply(zernio_post_id, platform, comment_id, text):
         _call(f"/inbox/comments/{pid}/{comment_id}/private-reply", {"accountId": acct["_id"], "message": text[:1000]})
         return "sent"
     except RuntimeError as e:
-        if "privateReplyConsumed" in str(e):
+        msg = str(e)
+        if "privateReplyConsumed" in msg or "already been sent" in msg or "only allows one private reply" in msg:
             return "already"
         raise
