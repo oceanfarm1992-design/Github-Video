@@ -55,8 +55,13 @@ def channel(service):
 
 
 def available(service):
+    """Channel connected (and, for Pinterest, at least one board to pin to)."""
     try:
-        return enabled() and channel(service) is not None
+        ch = channel(service) if enabled() else None
+        if ch and service == "pinterest" and not ch.get("boards"):
+            log.info("Pinterest has no boards yet: skipping Pinterest until one exists")
+            return False
+        return ch is not None
     except Exception as e:
         log.warning("buffer channel lookup failed: %s", e)
         return False
