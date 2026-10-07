@@ -80,6 +80,37 @@ class ToolsTests(unittest.TestCase):
         self.assertIsNone(publish.already_published("youtube", "t1"))
         publish.record_published("youtube", "t1", "v1", "u")  # must not raise
 
+    def test_promo_tour_rotation_and_quota(self):
+        from pipeline import db, promo
+        desc = ("Merge PDF free online: combine multiple PDFs into a single document, in the order you choose. "
+                "Runs 100% in your browser — files are never uploaded. No signup, no watermarks.")
+        secs = [{"heading": "Merge PDF", "text": "Combine multiple PDFs.", "box": [0, 100, 500, 80]},
+                {"heading": "About Merge PDF", "text": "Merge PDF combines two or more PDF files into a single document. It is fast.",
+                 "box": [0, 600, 500, 120]},
+                {"heading": "How to use Merge PDF", "text": "Drop two or more PDF files onto the page. Then click merge.",
+                 "box": [0, 900, 500, 120]},
+                {"heading": "Frequently asked questions", "text": "Is there a limit?", "box": [0, 1300, 500, 300]}]
+        hook, beats = promo.tour("Merge PDF", "https://privacypdftools.com/tool/merge-pdf", desc, secs)
+        self.assertEqual(hook, "Need to combine multiple PDFs into a single document, without uploading your files?")
+        self.assertEqual([b["text"] for b in beats], [
+            "Meet Merge PDF, on Privacy PDF Tools.",
+            "Merge PDF combines two or more PDF files into a single document.",
+            "Drop two or more PDF files onto the page.",
+            "Runs 100% in your browser — files are never uploaded. No signup, no watermarks."])
+        self.assertIsNone(beats[-1]["box"])
+        conn = db.connect(":memory:")
+        tools = [("merge-pdf", "u1"), ("split-pdf", "u2")]
+        self.assertEqual(promo.next_tool(conn, tools)[0], "merge-pdf")
+        conn.execute("INSERT INTO topics (id,title,source,url,status,updated_at) VALUES ('a','t','promo:merge-pdf','u','PUBLISHED',1)")
+        self.assertEqual(promo.next_tool(conn, tools)[0], "split-pdf")       # never-shown first
+        conn.execute("INSERT INTO topics (id,title,source,url,status,updated_at) VALUES ('b','t','promo:split-pdf','u','PUBLISHED',2)")
+        self.assertEqual(promo.next_tool(conn, tools)[0], "merge-pdf")       # then least recently shown
+        self.assertEqual(promo.EXCLUDE, {"unlock-pdf", "remove-password"})  # kept out of the rotation
+        self.assertEqual(generate.kind("promo:merge-pdf"), "promo")
+        mk = lambda src, sc: {"source": src, "score": sc}
+        got = generate.pick([mk("github", 80), mk("promo:merge-pdf", 95)], 1, 0, 75, 65, 0, 0, 1)
+        self.assertEqual([r["source"] for r in got], ["promo:merge-pdf", "github"])
+
     def test_sites_catalog_safety_screen(self):
         from pipeline import sites
         for bad in ("Shodan [Cybersecurity]", "Sherlock [OSINT]", "Insecam [Live Cameras]", "Exploit Database",

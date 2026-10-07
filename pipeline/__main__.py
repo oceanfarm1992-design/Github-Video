@@ -3,19 +3,19 @@ import argparse
 import logging
 import sys
 
-from . import analytics, db, engage, preview, zernio_check, discover, tools, sites, voicetest, filter as filt, generate, publish, qc, render, research, score
+from . import analytics, db, engage, preview, zernio_check, discover, tools, sites, promo, voicetest, filter as filt, generate, publish, qc, render, research, score
 
 STAGES = {
     "collect": ["discover", "filter"],           # every 30-60 min: cheap metadata
     "research": ["filter", "research", "score"],  # every 3-6 h: only candidates
-    "produce": ["tools", "sites", "generate", "render", "qc", "publish"],  # daily
+    "produce": ["tools", "sites", "promo", "generate", "render", "qc", "publish"],  # daily
     "engage": ["engage"],                         # every 30 min: answer keyword comments
-    "draft": ["tools", "sites", "generate", "render", "qc"],         # make + check videos, never publishes
+    "draft": ["tools", "sites", "promo", "generate", "render", "qc"],         # make + check videos, never publishes
     "preview": ["preview"],                      # sample render, never publishes
     "voicetest": ["voicetest"],                   # cloned-voice A/B samples, never publishes
     "zernio": ["zernio"],                         # read-only: list Zernio accounts + automations
     "analyze": ["analytics"],                    # daily/weekly
-    "all": ["discover", "filter", "research", "score", "tools", "sites", "generate", "render", "qc", "publish", "engage", "analytics"],
+    "all": ["discover", "filter", "research", "score", "tools", "sites", "promo", "generate", "render", "qc", "publish", "engage", "analytics"],
 }
 
 
@@ -28,6 +28,8 @@ def run_stage(name, conn):
         return voicetest.run(conn)
     if name == "tools":
         return tools.run(conn)
+    if name == "promo":
+        return promo.run(conn)
     if name == "sites":
         return sites.run(conn)
     if name == "research":

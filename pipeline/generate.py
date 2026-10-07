@@ -134,6 +134,8 @@ def kind(source):
         return "github"
     if source.startswith("tools:"):
         return "tools"
+    if source.startswith("promo:"):
+        return "promo"
     return "sites" if source.startswith("sites:") else "news"
 
 
@@ -144,11 +146,11 @@ def videos_today(conn, which=None):
     return sum(1 for r in rows if which is None or kind(r["source"]) == which)
 
 
-def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0, sites_room=0):
+def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0, sites_room=0, promo_room=0):
     """Top-scoring rows per category, within each category's remaining daily room and score bar."""
     out = []
-    room = {"github": gh_room, "news": news_room, "tools": tools_room, "sites": sites_room}
-    bar = {"github": min_gh, "news": min_news, "tools": 0, "sites": 0}
+    room = {"github": gh_room, "news": news_room, "tools": tools_room, "sites": sites_room, "promo": promo_room}
+    bar = {"github": min_gh, "news": min_news, "tools": 0, "sites": 0, "promo": 0}
     for r in sorted(rows, key=lambda r: -r["score"]):
         k = kind(r["source"])
         if room[k] > 0 and r["score"] >= bar[k]:
@@ -165,6 +167,8 @@ def hashtags(row):
         tags = ["#AI", "#AITools", raw.get("hashtag") or "#Tech"]
     elif k == "sites":
         tags = ["#Websites", "#UsefulWebsites", "#TechTips", "#Internet"]
+    elif k == "promo":
+        tags = ["#PDF", "#PDFTools", "#Privacy", "#FreeTools", "#Productivity"]
     elif k == "github":
         tags = ["#AI", "#OpenSource", "#GitHub"]
         for t in raw.get("topics", [])[:6]:
@@ -220,7 +224,16 @@ def caption_question(row):
         return "Which one would you try first?"
     if k == "sites":
         return "Which one did you not know about?"
+    if k == "promo":
+        return "Which PDF tool should I show next?"
     return "Would you use this?"
+
+
+def promo_script(row):
+    """Promo video for one Privacy PDF Tools tool: the tour built from the tool's own page."""
+    raw = json.loads(row["raw"] or "{}")
+    t = raw.get("tour", {})
+    return t.get("hook", ""), [b["text"] for b in t.get("beats", [])], f"Here's the link: {raw['tool']['url']}"
 
 
 def run(conn):
@@ -236,7 +249,8 @@ def run(conn):
                 config.DAILY_NEWS_VIDEOS - videos_today(conn, "news"),
                 config.GENERATE_SCORE, min(config.GENERATE_SCORE, config.GENERATE_SCORE_NEWS),
                 config.DAILY_TOOLS_VIDEOS - videos_today(conn, "tools"),
-                config.DAILY_SITES_VIDEOS - videos_today(conn, "sites"))[:room]
+                config.DAILY_SITES_VIDEOS - videos_today(conn, "sites"),
+                config.DAILY_PROMO_VIDEOS - videos_today(conn, "promo"))[:room]
     n = 0
     for row in rows:
         try:
@@ -244,6 +258,10 @@ def run(conn):
             claims = json.loads(row["claims"] or "[]")
             if kind(row["source"]) == "tools":  # facts come from each tool's own site; no LLM rewrite
                 hook, beats, response = tools_script(row)
+                cta = "TOOL"
+                outro = series_outro(cta, response)
+            elif kind(row["source"]) == "promo":  # the owner's own site: its own page text, no LLM rewrite
+                hook, beats, response = promo_script(row)
                 cta = "TOOL"
                 outro = series_outro(cta, response)
             elif kind(row["source"]) == "sites":  # same: each site's own description, no LLM rewrite

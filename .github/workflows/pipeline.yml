@@ -11,13 +11,13 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "collect | research | tools | sites | produce | draft | engage | preview | zernio | voicetest | analyze | all"
+        description: "collect | research | tools | sites | promo | produce | draft | engage | preview | zernio | voicetest | analyze | all"
         default: collect
       max_videos:
         description: "Override MAX_VIDEOS_PER_DAY for this run (optional)"
         required: false
       sources:
-        description: "Only these source types, e.g. github | tools | sites | rss,hn,arxiv (optional)"
+        description: "Only these source types, e.g. github | tools | sites | promo | rss,hn,arxiv (optional)"
         required: false
       min_score:
         description: "Override GENERATE_SCORE for this run (optional)"
@@ -49,13 +49,14 @@ jobs:
       WATERMARK_TEXT: ${{ vars.WATERMARK_TEXT }}
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
       MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
-      MAX_VIDEOS_PER_DAY: ${{ github.event.inputs.max_videos || vars.MAX_VIDEOS_PER_DAY || '4' }}
-      MAX_VIDEOS_PER_RUN: ${{ vars.MAX_VIDEOS_PER_RUN || '2' }}
+      MAX_VIDEOS_PER_DAY: ${{ github.event.inputs.max_videos || vars.MAX_VIDEOS_PER_DAY || '5' }}
+      MAX_VIDEOS_PER_RUN: ${{ vars.MAX_VIDEOS_PER_RUN || '3' }}
       DAILY_GITHUB_VIDEOS: ${{ vars.DAILY_GITHUB_VIDEOS || '2' }}
       DAILY_NEWS_VIDEOS: ${{ vars.DAILY_NEWS_VIDEOS || '0' }}
       DAILY_SITES_VIDEOS: ${{ vars.DAILY_SITES_VIDEOS || '1' }}
       SITES_PER_VIDEO: ${{ vars.SITES_PER_VIDEO || '1' }}
       DAILY_TOOLS_VIDEOS: ${{ vars.DAILY_TOOLS_VIDEOS || '1' }}
+      DAILY_PROMO_VIDEOS: ${{ vars.DAILY_PROMO_VIDEOS || '1' }}
       TOOLS_PER_VIDEO: ${{ vars.TOOLS_PER_VIDEO || '10' }}
       GENERATE_SCORE_NEWS: ${{ vars.GENERATE_SCORE_NEWS || '65' }}
       GENERATE_SOURCES: ${{ github.event.inputs.sources }}

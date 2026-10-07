@@ -51,6 +51,17 @@ def mix_music(voice, track, total, dest):
     return dest
 
 
+def promo_of(topic):
+    """Raw data of a Privacy PDF Tools promo topic (tool + tour), else None."""
+    try:
+        if topic and str(topic["source"]).startswith("promo:"):
+            raw = json.loads(topic["raw"] or "{}")
+            return raw if raw.get("tour") and raw.get("tool") else None
+    except (KeyError, IndexError, TypeError, ValueError):
+        pass
+    return None
+
+
 def sections_of(topic):
     """Sections of a one-website video (heading, text, box), else None."""
     try:
@@ -252,7 +263,16 @@ def render(content, topic=None):
     card = page = page_url = None
     sections = sections_of(topic)
     is_sites = bool(topic) and str(topic["source"]).startswith("sites:")
-    if tools and sections and len(tools) == 1:
+    promo_raw = promo_of(topic)
+    if promo_raw:
+        # owner's own tool page, guided tour: each beat spotlights its section of the page
+        tool, beats = promo_raw["tool"], promo_raw["tour"]["beats"]
+        shot = browser.capture(tool["url"], out / "assets", any_site=True, max_css_height=2600)
+        if shot and len(texts) == len(beats) + 2:  # hook, beats, outro
+            scene_pages = [(shot, tool["url"])] * len(texts)
+            scene_focus = [None] + [b.get("box") for b in beats] + [None]
+            scene_labels = [f"{promo_raw.get('brand', '')}  ·  {tool['name']}"] * len(texts)
+    elif tools and sections and len(tools) == 1:
         # one website, guided tour: every scene on its page; the camera glides and zooms to each section
         site = tools[0]
         shot = browser.capture(site["url"], out / "assets", any_site=True, max_css_height=2600)
