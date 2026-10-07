@@ -1,6 +1,7 @@
 """HTTP with timeout, retry + exponential backoff, rate-limit handling and ETag caching."""
 import json
 import logging
+import re
 import time
 import urllib.error
 import urllib.request
@@ -22,7 +23,11 @@ def request(url, headers=None, data=None, method=None, attempts=3):
         except urllib.error.HTTPError as e:
             if e.code == 304:
                 return 304, dict(e.headers), b""
-            last = e
+            try:  # the API's own error message is what tells us why (e.g. Zernio 409)
+                detail = e.read()[:300].decode("utf-8", "replace").strip()
+            except Exception:
+                detail = ""
+            last = f"HTTP Error {e.code}: {e.reason}" + (f" - {detail}" if detail else "")
             # 403 is only a rate limit on GitHub when the quota is exhausted; elsewhere it is a permission error
             if e.code == 429 or (e.code == 403 and e.headers.get("X-RateLimit-Remaining") == "0"):
                 reset = e.headers.get("Retry-After")
@@ -36,7 +41,12 @@ def request(url, headers=None, data=None, method=None, attempts=3):
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             last = e
             time.sleep(2 ** i)
-    raise RuntimeError(f"request failed {url}: {last}")
+    raise RuntimeError(f"request failed {_safe(url)}: {last}")
+
+
+def _safe(url):
+    """URL for logs (public on a public repo): mask tokens passed as query parameters."""
+    return re.sub(r"((?:access_token|token|key|api_key)=)[^&]+", r"\1***", url, flags=re.I)
 
 
 def cached_get(conn, url, headers=None, ttl=0):
