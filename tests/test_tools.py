@@ -80,6 +80,39 @@ class ToolsTests(unittest.TestCase):
         self.assertIsNone(publish.already_published("youtube", "t1"))
         publish.record_published("youtube", "t1", "v1", "u")  # must not raise
 
+    def test_buffer_tiktok_and_pinterest_posts(self):
+        from pipeline import buffer
+        calls = []
+
+        def fake_gql(query, variables=None):
+            calls.append(variables)
+            if "mode" in (variables or {}).get("input", {}) and len(calls) == 1:
+                raise RuntimeError("buffer: Field 'mode' is not defined by type 'CreatePostInput'")
+            return {"createPost": {"post": {"id": f"p{len(calls)}"}}}
+
+        old = (buffer._gql, buffer._channels)
+        buffer._gql = fake_gql
+        buffer._channels = [{"id": "ch-tt", "service": "tiktok", "name": "me", "boards": []},
+                            {"id": "ch-pin", "service": "pinterest", "name": "me",
+                             "boards": [{"serviceId": "b1", "name": "Tech"}, {"serviceId": "b2", "name": "PDF Tips"}]}]
+        os.environ["BUFFER_PINTEREST_BOARD"] = "pdf tips"
+        try:
+            c = {"caption": "Need to merge PDFs?\n\nWhich PDF tool should I show next?\n\nSource: https://x",
+                 "hashtags": '["#PDF"]', "title": "Merge PDF", "hook": "Need to merge PDFs?",
+                 "_cta": {"keyword": "TOOL", "response": "Here's the link: https://privacypdftools.com/tool/merge-pdf"}}
+            self.assertEqual(buffer.publish("tiktok", c, "https://v/x.mp4"), ("p2", ""))  # retried without mode
+            tt = calls[1]["input"]
+            self.assertEqual(tt["metadata"], {"tiktok": {"isAiGenerated": True}})
+            self.assertNotIn("http", tt["text"])  # caption carries no link
+            buffer.publish("pinterest", c, "https://v/x.mp4")
+            pin = calls[-1]["input"]["metadata"]["pinterest"]
+            self.assertEqual(pin["boardServiceId"], "b2")
+            self.assertEqual(pin["url"], "https://privacypdftools.com/tool/merge-pdf")
+            self.assertEqual(pin["title"], "Need to merge PDFs?")
+        finally:
+            buffer._gql, buffer._channels = old
+            os.environ.pop("BUFFER_PINTEREST_BOARD", None)
+
     def test_promo_tour_rotation_and_quota(self):
         from pipeline import db, promo
         desc = ("Merge PDF free online: combine multiple PDFs into a single document, in the order you choose. "

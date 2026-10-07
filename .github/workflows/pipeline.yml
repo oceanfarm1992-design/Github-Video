@@ -45,6 +45,7 @@ jobs:
       VOICE_EXPRESSIVENESS: ${{ vars.VOICE_EXPRESSIVENESS || '1.0' }}
       SCROLL_SPEED: ${{ vars.SCROLL_SPEED || '200' }}
       MUSIC_STYLE: ${{ vars.MUSIC_STYLE || 'hacker' }}
+      BUFFER_PINTEREST_BOARD: ${{ vars.BUFFER_PINTEREST_BOARD }}
       MUSIC_VOLUME: ${{ vars.MUSIC_VOLUME || '0.22' }}
       WATERMARK_TEXT: ${{ vars.WATERMARK_TEXT }}
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
@@ -150,6 +151,7 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
           META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}
           META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}

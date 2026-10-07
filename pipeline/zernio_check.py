@@ -13,9 +13,9 @@ def _short(d, keys):
 
 
 def run(conn=None):
-    if not zernio.enabled():
-        return "ZERNIO_API_KEY not set"
     out = {}
+    if not zernio.enabled():
+        out["zernio"] = "ZERNIO_API_KEY not set"
     try:
         data = zernio._call("/accounts")
         accts = data.get("accounts", data) if isinstance(data, dict) else data
@@ -63,6 +63,15 @@ def run(conn=None):
         except Exception as e:
             rows.append({"error": str(e)[:300]})
         out["dms_last_24h"][a.get("platform")] = rows
+    # Buffer (TikTok, Pinterest): connected channels and Pinterest boards (names only, no secrets)
+    from . import buffer
+    if buffer.enabled():
+        try:
+            out["buffer_channels"] = [{"service": ch.get("service"), "name": ch.get("name"),
+                                       "boards": [b.get("name") for b in ch.get("boards") or []]}
+                                      for ch in buffer.channels()]
+        except Exception as e:
+            out["buffer_error"] = str(e)[:300]
     for line in json.dumps(out, indent=1).splitlines():
         log.info(line)
     return {k: (len(v) if isinstance(v, list) else v) for k, v in out.items()}

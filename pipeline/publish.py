@@ -9,7 +9,7 @@ import os
 import time
 import urllib.parse
 
-from . import db, zernio
+from . import buffer, db, zernio
 from .http import request
 
 log = logging.getLogger("publish")
@@ -155,6 +155,10 @@ def platforms():
         out["facebook"] = (True, facebook_reel)
         if os.environ.get("META_IG_USER_ID"):
             out["instagram"] = (True, instagram_reel)
+    if buffer.enabled():  # TikTok + Pinterest through Buffer
+        for svc in buffer.SERVICES:
+            if buffer.available(svc):
+                out[svc] = (True, lambda c, url, svc=svc: buffer.publish(svc, c, url))
     return out
 
 
