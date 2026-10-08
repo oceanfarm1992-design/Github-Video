@@ -159,6 +159,15 @@ def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0, sites_room=0,
     return out
 
 
+ROTATION = ("github", "tools", "github", "sites", "promo")  # one video per slot through the day
+
+
+def by_rotation(rows, done_today):
+    """Orders picked rows so the day's slots alternate series: the next due kind first, then the rest."""
+    order = ROTATION[done_today % len(ROTATION):] + ROTATION
+    return sorted(rows, key=lambda r: order.index(kind(r["source"])) if kind(r["source"]) in order else 99)
+
+
 def hashtags(row):
     """Topic-specific hashtags (better discovery than a fixed set), max 5."""
     raw = json.loads(row["raw"] or "{}")
@@ -250,7 +259,8 @@ def run(conn):
                 config.GENERATE_SCORE, min(config.GENERATE_SCORE, config.GENERATE_SCORE_NEWS),
                 config.DAILY_TOOLS_VIDEOS - videos_today(conn, "tools"),
                 config.DAILY_SITES_VIDEOS - videos_today(conn, "sites"),
-                config.DAILY_PROMO_VIDEOS - videos_today(conn, "promo"))[:room]
+                config.DAILY_PROMO_VIDEOS - videos_today(conn, "promo"))
+    rows = by_rotation(rows, videos_today(conn))[:room]
     n = 0
     for row in rows:
         try:

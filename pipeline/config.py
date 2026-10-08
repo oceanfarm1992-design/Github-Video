@@ -33,7 +33,7 @@ DAILY_TOOLS_VIDEOS = _i("DAILY_TOOLS_VIDEOS", 1)   # "N AI tools for <category>"
 DAILY_PROMO_VIDEOS = _i("DAILY_PROMO_VIDEOS", 1)   # one Privacy PDF Tools tool per day
 TOOLS_PER_VIDEO = _i("TOOLS_PER_VIDEO", 10)
 # at most this many videos per produce run; two daily produce slots catch up if GitHub drops one schedule
-MAX_VIDEOS_PER_RUN = _i("MAX_VIDEOS_PER_RUN", 3)
+MAX_VIDEOS_PER_RUN = _i("MAX_VIDEOS_PER_RUN", 1)
 GENERATE_SCORE_NEWS = _i("GENERATE_SCORE_NEWS", 65)
 HTTP_TIMEOUT = _i("HTTP_TIMEOUT", 20)
 MAX_ATTEMPTS = _i("MAX_ATTEMPTS", 3)

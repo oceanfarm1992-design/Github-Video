@@ -168,6 +168,15 @@ class Tests(unittest.TestCase):
         self.assertFalse(engage.matches("send CODE", "GITHUB"))
         self.assertFalse(engage.matches(None, "GITHUB"))
 
+    def test_rotation_alternates_series_through_the_day(self):
+        rows = [{"source": s, "score": sc} for s, sc in
+                (("github", 90), ("github", 80), ("tools:video", 50), ("sites:part-2", 50), ("promo:split-pdf", 50))]
+        firsts = [generate.kind(generate.by_rotation(rows, n)[0]["source"]) for n in range(5)]
+        self.assertEqual(firsts, ["github", "tools", "github", "sites", "promo"])
+        self.assertEqual(generate.by_rotation(rows, 0)[0]["score"], 90)  # best GitHub first
+        missing = [r for r in rows if not r["source"].startswith("tools")]
+        self.assertEqual(generate.kind(generate.by_rotation(missing, 1)[0]["source"]), "github")  # skips to next due
+
 
 if __name__ == "__main__":
     unittest.main()

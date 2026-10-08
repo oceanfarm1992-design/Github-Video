@@ -2,7 +2,7 @@ name: pipeline
 
 on:
   # Triggered by cron-job.org (reliable, on time) through workflow_dispatch: engage every 30 min, collect
-  # hourly at :17, research every 4 h, produce 09:05 + 14:05 UTC, analyze 06:30 UTC. GitHub's own `schedule`
+  # hourly at :17, research every 4 h, produce 05:05, 08:05, 11:05, 14:05, 17:05 UTC (one video each), analyze 06:30 UTC. GitHub's own `schedule`
   # was removed: it fired late and rarely, and a late scheduled run could cancel a queued produce run
   # (one concurrency group keeps only one pending run).
   workflow_dispatch:
@@ -48,7 +48,7 @@ jobs:
       DAILY_AI_BUDGET_USD: ${{ vars.DAILY_AI_BUDGET_USD || '1.00' }}
       MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
       MAX_VIDEOS_PER_DAY: ${{ github.event.inputs.max_videos || vars.MAX_VIDEOS_PER_DAY || '5' }}
-      MAX_VIDEOS_PER_RUN: ${{ vars.MAX_VIDEOS_PER_RUN || '3' }}
+      MAX_VIDEOS_PER_RUN: ${{ vars.MAX_VIDEOS_PER_RUN || '1' }}
       DAILY_GITHUB_VIDEOS: ${{ vars.DAILY_GITHUB_VIDEOS || '2' }}
       DAILY_NEWS_VIDEOS: ${{ vars.DAILY_NEWS_VIDEOS || '0' }}
       DAILY_SITES_VIDEOS: ${{ vars.DAILY_SITES_VIDEOS || '1' }}
