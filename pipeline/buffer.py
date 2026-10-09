@@ -90,6 +90,16 @@ CREATE = """mutation($input: CreatePostInput!) { createPost(input: $input) {
   ... on MutationError { message } } }"""
 
 
+def _create(base):
+    try:
+        data = _gql(CREATE, {"input": {**base, "mode": "shareNow"}})
+    except RuntimeError as e:
+        if "mode" not in str(e):
+            raise
+        data = _gql(CREATE, {"input": base})  # schema without a mode field: Buffer publishes from its queue
+    return data.get("createPost") or {}
+
+
 def publish(service, c, video_url):
     """Returns (buffer_post_id, url). Raises on failure."""
     from . import seo
@@ -108,13 +118,10 @@ def publish(service, c, video_url):
                               **({"url": single_link(c)} if single_link(c) else {})}}
     base = {"channelId": ch["id"], "text": text, "schedulingType": "automatic",
             "assets": [{"video": {"url": video_url, "metadata": {"thumbnailOffset": 1500}}}], "metadata": meta}
-    try:
-        data = _gql(CREATE, {"input": {**base, "mode": "shareNow"}})
-    except RuntimeError as e:
-        if "mode" not in str(e):
-            raise
-        data = _gql(CREATE, {"input": base})  # schema without a mode field: Buffer publishes from its queue
-    res = data.get("createPost") or {}
+    res = _create(base)
+    if service == "linkedin" and links and "first comment" in (res.get("message") or "").lower():
+        # Buffer's free plan has no first comment: the link goes in the post text instead
+        res = _create({**base, "text": seo.linkedin_caption(c, False) + "\n\n" + links, "metadata": {}})
     if res.get("message"):
         raise RuntimeError(f"buffer {service}: {res['message']}")
     post = res.get("post") or {}

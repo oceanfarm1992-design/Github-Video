@@ -82,6 +82,42 @@ class StoryTests(unittest.TestCase):
         self.assertNotIn("content", body)  # Stories show no caption
         self.assertEqual(publish.MAX_SECONDS["instagram_story"], 60)
 
+    def test_story_waits_for_its_reel(self):
+        self.assertTrue(publish.story_waits("instagram_story", {"youtube"}))
+        self.assertFalse(publish.story_waits("instagram_story", {"instagram"}))
+        self.assertFalse(publish.story_waits("facebook", set()))
+
+    def test_reel_returns_only_once_live_on_the_platform(self):
+        from pipeline import zernio
+        polls = iter(["processing", "processing", "published"])
+        olds = (zernio._call, zernio.account, zernio.create_automation, zernio.POLL_SECONDS)
+
+        def fake_call(path, body=None, **k):
+            if body is not None:  # create
+                return {"post": {"_id": "r1", "platforms": [{"platform": "instagram", "status": "processing"}]}}
+            return {"post": {"_id": "r1", "platforms": [{"platform": "instagram", "status": next(polls),
+                                                         "platformPostUrl": "https://ig/r1"}]}}
+        zernio._call, zernio.account = fake_call, lambda plat: {"_id": "acc"}
+        zernio.create_automation, zernio.POLL_SECONDS = (lambda *a: None), 0
+        try:
+            self.assertEqual(zernio.publish_reel("instagram", GH, "https://v/x.mp4"), ("r1", "https://ig/r1"))
+        finally:
+            zernio._call, zernio.account, zernio.create_automation, zernio.POLL_SECONDS = olds
+
+    def test_reel_rejected_by_meta_raises(self):
+        from pipeline import zernio
+        old = zernio._call
+        zernio._call = lambda path, body=None, **k: {"post": {"platforms": [
+            {"platform": "facebook", "status": "failed", "errorMessage": "Reel too long"}]}}
+        try:
+            with self.assertRaisesRegex(RuntimeError, "Reel too long"):
+                zernio.wait_published("r1", "facebook")
+        finally:
+            zernio._call = old
+
+    def test_video_seconds_unknown_when_no_file_or_url(self):
+        self.assertEqual(publish.video_seconds("out/video/missing.mp4", None), 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

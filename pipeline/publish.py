@@ -174,12 +174,23 @@ def youtube_token_available():
                                                    and e.get("YOUTUBE_REFRESH_TOKEN")))
 
 
-def video_seconds(path):
-    try:
-        from .qc import probe
-        return float(probe(path)["format"]["duration"])
-    except Exception:
-        return 0.0
+def video_seconds(path, url=None):
+    """Length in seconds from the local file, else from the hosted copy (a retry runs on a fresh runner
+    that no longer has the file). 0.0 when unknown."""
+    from .qc import probe
+    for src in (path, url):
+        if not src or not (src.startswith("http") or os.path.exists(src)):
+            continue
+        try:
+            return float(probe(src)["format"]["duration"])
+        except Exception as e:
+            log.warning("could not read the length of %s: %s", src, e)
+    return 0.0
+
+
+def story_waits(name, done):
+    """A Story goes out only after the same video is live as a Reel on that platform."""
+    return name.endswith("_story") and name[:-len("_story")] not in done
 
 
 # ------------------------------------------- durable publish log (Supabase)
@@ -251,18 +262,27 @@ def run(conn):
             db.set_status(conn, c["tid"], "WAITING_FOR_API", "no platform credentials")
             continue
         done = {r["platform"] for r in conn.execute("SELECT platform FROM posts WHERE content_id=?", (c["id"],))}
-        errors, video_url = [], None
+        errors, video_url, seconds = [], None, None
         for name, (needs_url, fn) in configured.items():
             if name in done:
                 continue
+            if story_waits(name, done):
+                log.info("skip %s for %s: the video is not live there yet", name, c["title"])
+                continue
             try:
                 prior = already_published(name, c["tid"])
+                if not prior and name in MAX_SECONDS:
+                    if seconds is None:
+                        local = c["video_path"] and os.path.exists(c["video_path"])
+                        video_url = video_url or (None if local else public_video_url(c))
+                        seconds = video_seconds(c["video_path"], video_url)
+                    if not 0 < seconds <= MAX_SECONDS[name]:
+                        why = f"longer than its {MAX_SECONDS[name]} s limit" if seconds else "length unknown"
+                        log.info("skip %s for %s: %s", name, c["title"], why)
+                        continue
                 if prior:  # durable guard: survives a lost local state
                     post_id, url = prior
                     log.info("%s already has %s on %s; recording, not re-posting", c["title"], post_id, name)
-                elif name in MAX_SECONDS and video_seconds(c["video_path"]) > MAX_SECONDS[name]:
-                    log.info("skip %s for %s: longer than its %d s limit", name, c["title"], MAX_SECONDS[name])
-                    continue
                 elif name == "youtube":
                     tok = youtube_token()
                     post_id, url = youtube_upload(tok, c, link_block((c.get("_cta") or {}).get("response")))

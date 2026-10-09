@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import os
+import time
 
 from .http import request
 
@@ -58,6 +59,31 @@ def _first(d, *keys):
     return None
 
 
+REEL_WAIT_SECONDS = 300  # Meta usually finishes a Reel within 1-2 minutes
+POLL_SECONDS = 10
+FAILED = ("failed", "error", "rejected", "cancelled")
+
+
+def _entry(post, platform):
+    return next((p for p in post.get("platforms", []) if p.get("platform") == platform), {})
+
+
+def wait_published(post_id, platform, timeout=REEL_WAIT_SECONDS):
+    """Polls the post until it is live on the platform and returns that platform's entry. Zernio answers
+    "processing" first and uploads to Meta afterwards, so a Reel Meta rejects only shows up here."""
+    deadline = time.time() + timeout
+    while True:
+        plat = _entry(_call(f"/posts/{post_id}").get("post", {}), platform)
+        status = plat.get("status")
+        if status == "published":
+            return plat
+        if status in FAILED:
+            raise RuntimeError(f"zernio {platform}: {plat.get('errorMessage') or status}")
+        if time.time() >= deadline:
+            raise RuntimeError(f"zernio {platform}: still {status or 'pending'} after {timeout} s")
+        time.sleep(POLL_SECONDS)
+
+
 def publish_reel(platform, c, video_url):
     from .publish import social_caption  # local import: publish imports this module
     """Returns (platform_post_id, url). Raises on failure."""
@@ -79,20 +105,22 @@ def publish_reel(platform, c, video_url):
         existing = re.search(r'"existingPostId"\s*:\s*"([^"]+)"', str(e))
         if "409" not in str(e) or not existing:
             raise
-        # Zernio: this exact content is already on this account (an earlier attempt succeeded) -> record it
+        # Zernio: this exact content is already on this account (an earlier attempt) -> record it once it is live
         log.info("%s: already posted as %s; recording it instead of failing", platform, existing.group(1))
+        plat = wait_published(existing.group(1), platform)
         try:
-            create_automation(platform, acct, None, existing.group(1), c)
+            create_automation(platform, acct, _first(plat, "platformPostId"), existing.group(1), c)
         except Exception as ae:
             log.warning("comment automation for %s failed: %s", existing.group(1), ae)
-        return existing.group(1), ""
-    plat = next((p for p in post.get("platforms", []) if p.get("platform") == platform), {})
-    # "processing"/"scheduled"/"publishing" are normal in-flight states; only explicit failures raise.
-    if plat.get("status") in ("failed", "error", "rejected") or (plat.get("errorMessage") and plat.get("status") != "published"):
+        return existing.group(1), plat.get("platformPostUrl", "")
+    plat = _entry(post, platform)
+    if plat.get("status") in FAILED:
         raise RuntimeError(f"zernio {platform}: {plat.get('errorMessage') or plat.get('status')}")
     pid = post.get("_id") or _first(plat, "platformPostId")  # Zernio id: used to list/reply to comments
     if not pid:
         raise RuntimeError(f"zernio {platform}: no post id in response")
+    if plat.get("status") != "published":  # the Story follows only a Reel that is really live
+        plat = wait_published(post.get("_id"), platform) if post.get("_id") else plat
     try:
         create_automation(platform, acct, _first(plat, "platformPostId"), post.get("_id"), c)
     except Exception as e:  # posting succeeded; automation can be re-created in the Zernio dashboard

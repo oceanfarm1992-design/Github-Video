@@ -225,7 +225,10 @@ class ToolsTests(unittest.TestCase):
         err = ('request failed https://zernio.com/api/v1/posts: HTTP Error 409: Conflict - {"error":"This exact '
                'content is already scheduled, publishing, or was posted","details":{"existingPostId":"abc123"}}')
 
-        def boom(*a, **k):
+        def boom(path, body=None, **k):
+            if body is None:  # the existing post is checked: it is live on Facebook
+                return {"post": {"platforms": [{"platform": "facebook", "status": "published",
+                                                "platformPostUrl": "https://fb/abc123"}]}}
             raise RuntimeError(err)
 
         made = []
@@ -236,7 +239,7 @@ class ToolsTests(unittest.TestCase):
         try:
             c = {"caption": "Hook?\n\nSource: https://x", "hashtags": '["#AI"]', "title": "t",
                  "_cta": {"keyword": "GITHUB", "response": "Here's the link: https://x"}}
-            self.assertEqual(zernio.publish_reel("facebook", c, "https://v/x.mp4"), ("abc123", ""))
+            self.assertEqual(zernio.publish_reel("facebook", c, "https://v/x.mp4"), ("abc123", "https://fb/abc123"))
             self.assertEqual(made, ["abc123"])  # the DM automation is still set up for the existing post
         finally:
             zernio._call, zernio.account, zernio.create_automation = olds
