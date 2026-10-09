@@ -219,6 +219,28 @@ def social_caption(c, cta_line=""):
     return "\n\n".join(b for b in body if b)
 
 
+def linkedin_caption(c, has_links=True):
+    """LinkedIn: a short professional post - hook, what it is, up to three points, a question for comments,
+    the link in the first comment, three hashtags."""
+    k, beats = kind_of(c), _beats(c)
+    q = (c.get("caption") or "").split("\n\nSource:")[0].split("\n\n")
+    parts = [q[0].strip()]
+    s = summary(c)
+    if s and s.lower() not in parts[0].lower():
+        parts.append(s)
+    points = beats[1:4] if k != "tools" else []
+    if points:
+        parts.append("\n".join("- " + _clip(NUM_RE.sub("", b), 140) for b in points))
+    if len(q) > 1 and q[1].strip():
+        parts.append(q[1].strip())
+    if has_links:
+        parts.append("Link in the first comment \U0001F447")
+    if k == "sites":
+        parts.append("For educational purposes only.")
+    parts.append(" ".join(hashtags(c, 3)))
+    return "\n\n".join(p for p in parts if p)
+
+
 # --------------------------------------------------------------- playlists
 def playlist_id(conn, token, k):
     """The series playlist (found by title or created once; id cached in kv). Playlists keep viewers

@@ -94,7 +94,8 @@ class ToolsTests(unittest.TestCase):
         buffer._gql = fake_gql
         buffer._channels = [{"id": "ch-tt", "service": "tiktok", "name": "me", "boards": []},
                             {"id": "ch-pin", "service": "pinterest", "name": "me",
-                             "boards": [{"serviceId": "b1", "name": "Tech"}, {"serviceId": "b2", "name": "PDF Tips"}]}]
+                             "boards": [{"serviceId": "b1", "name": "Tech"}, {"serviceId": "b2", "name": "PDF Tips"}]},
+                            {"id": "ch-li", "service": "linkedin", "name": "me", "boards": []}]
         os.environ["BUFFER_PINTEREST_BOARD"] = "pdf tips"
         try:
             c = {"caption": "Need to merge PDFs?\n\nWhich PDF tool should I show next?\n\nSource: https://x",
@@ -109,6 +110,11 @@ class ToolsTests(unittest.TestCase):
             self.assertEqual(pin["boardServiceId"], "b2")
             self.assertEqual(pin["url"], "https://privacypdftools.com/tool/merge-pdf")
             self.assertEqual(pin["title"], "Need to merge PDFs?")
+            buffer.publish("linkedin", c, "https://v/x.mp4")
+            li = calls[-1]["input"]
+            self.assertEqual(li["metadata"], {"linkedin": {"firstComment": "Link: https://privacypdftools.com/tool/merge-pdf"}})
+            self.assertIn("Link in the first comment", li["text"])
+            self.assertNotIn("http", li["text"])
         finally:
             buffer._gql, buffer._channels = old
             os.environ.pop("BUFFER_PINTEREST_BOARD", None)

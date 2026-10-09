@@ -13,7 +13,7 @@ from .http import request
 
 log = logging.getLogger("buffer")
 API = "https://api.buffer.com"
-SERVICES = ("tiktok", "pinterest")
+SERVICES = ("tiktok", "pinterest", "linkedin")
 
 
 def enabled():
@@ -92,13 +92,21 @@ CREATE = """mutation($input: CreatePostInput!) { createPost(input: $input) {
 
 def publish(service, c, video_url):
     """Returns (buffer_post_id, url). Raises on failure."""
-    from .publish import social_caption, youtube_title
+    from . import seo
+    from .publish import link_block, social_caption, youtube_title
     ch = channel(service)
     title = youtube_title(c).replace(" #Shorts", "")[:100]
-    meta = {"tiktok": {"isAiGenerated": True}} if service == "tiktok" else {
-        "pinterest": {"boardServiceId": board_id(ch), "title": title,
-                      **({"url": single_link(c)} if single_link(c) else {})}}
-    base = {"channelId": ch["id"], "text": social_caption(c), "schedulingType": "automatic",
+    links = link_block((c.get("_cta") or {}).get("response"))
+    text = social_caption(c)
+    if service == "tiktok":
+        meta = {"tiktok": {"isAiGenerated": True}}
+    elif service == "linkedin":  # links in the post text cut reach; LinkedIn has no keyword-DM, so first comment
+        text = seo.linkedin_caption(c, bool(links))
+        meta = {"linkedin": {"firstComment": links}} if links else {}
+    else:
+        meta = {"pinterest": {"boardServiceId": board_id(ch), "title": title,
+                              **({"url": single_link(c)} if single_link(c) else {})}}
+    base = {"channelId": ch["id"], "text": text, "schedulingType": "automatic",
             "assets": [{"video": {"url": video_url, "metadata": {"thumbnailOffset": 1500}}}], "metadata": meta}
     try:
         data = _gql(CREATE, {"input": {**base, "mode": "shareNow"}})
