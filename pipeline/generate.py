@@ -173,13 +173,13 @@ def hashtags(row):
     raw = json.loads(row["raw"] or "{}")
     k = kind(row["source"])
     if k == "tools":
-        tags = ["#AI", "#AITools", raw.get("hashtag") or "#Tech"]
+        tags = ["#AITools", "#AI", raw.get("hashtag") or "#Tech", "#ArtificialIntelligence", "#TechTips"]
     elif k == "sites":
-        tags = ["#Websites", "#UsefulWebsites", "#TechTips", "#Internet"]
+        tags = ["#UsefulWebsites", "#WebsitesYouShouldKnow", "#Websites", "#TechTips", "#Internet"]
     elif k == "promo":
-        tags = ["#PDF", "#PDFTools", "#Privacy", "#FreeTools", "#Productivity"]
+        tags = ["#PDFTools", "#PDF", "#Privacy", "#Productivity", "#FreeTools"]
     elif k == "github":
-        tags = ["#AI", "#OpenSource", "#GitHub"]
+        tags = ["#OpenSource", "#GitHub", "#AI"]
         for t in raw.get("topics", [])[:6]:
             tag = "#" + re.sub(r"[^A-Za-z0-9]", "", t.title())
             if 3 < len(tag) <= 25 and tag.lower() not in {x.lower() for x in tags}:

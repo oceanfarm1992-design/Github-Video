@@ -35,7 +35,7 @@ Every stage resumes from DB state; failures retry with exponential backoff (10 m
    Preview without publishing: Actions -> pipeline -> Run workflow, stage `preview`, sources `tools` or `sites`.
 5. Optional variables: `DAILY_AI_BUDGET_USD`, `MAX_LLM_CALLS_PER_DAY`, `MAX_VIDEOS_PER_DAY`, `MAX_RENDERS_PER_TOPIC`, `MIN_TOPIC_SCORE`, `GENERATE_SCORE`.
 6. Scheduling: runs are triggered by cron-job.org through `workflow_dispatch` (GitHub's own cron fired late and rarely, and was removed). Jobs (UTC): engage every 30 min, collect hourly at :17, research every 4 h, produce 05:05, 08:05, 11:05, 14:05 and 17:05, analyze 06:30. Each job POSTs `{"ref":"main","inputs":{"stage":"<stage>"}}` to `https://api.github.com/repos/<owner>/<repo>/actions/workflows/pipeline.yml/dispatches` with a fine-grained token (Actions: read & write on this repo only). Turn on cron-job.org failure e-mails.
-   YouTube API quota (10,000 units/day): uploads cost 1,600 each, so comment checks are throttled (each video every 2 h, for 3 days) and YouTube replies capped at `YT_REPLIES_PER_DAY` (25).
+   YouTube API quota (10,000 units/day): uploads cost 1,600 each, so comment checks are throttled (each video every 2 h, for 3 days) and YouTube replies capped at `YT_REPLIES_PER_DAY` (20). SEO (`pipeline/seo.py`): keyword-first titles, full descriptions, tags, English language metadata and one public playlist per series (created once, 50 units each add).
 
 Notes for public repos:
 - No secrets are in the code; `.env` is git-ignored. Never print or commit tokens.

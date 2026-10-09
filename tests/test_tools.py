@@ -53,11 +53,11 @@ class ToolsTests(unittest.TestCase):
         self.assertIn("Here are 3", hook)
         self.assertEqual(beats[1], "2. Beta: Edit clips with AI.")
         self.assertIn("3. Gamma - https://c.example", links)
-        self.assertEqual(generate.hashtags(TOOLS_ROW), ["#AI", "#AITools", "#AIVideo"])
+        self.assertEqual(generate.hashtags(TOOLS_ROW), ["#AITools", "#AI", "#AIVideo", "#ArtificialIntelligence", "#TechTips"])
 
     def test_github_hashtags_from_repo_topics(self):
         row = {"source": "github", "raw": json.dumps({"topics": ["llm", "ai-agents", "x"]})}
-        self.assertEqual(generate.hashtags(row), ["#AI", "#OpenSource", "#GitHub", "#Llm", "#AiAgents"])
+        self.assertEqual(generate.hashtags(row), ["#OpenSource", "#GitHub", "#AI", "#Llm", "#AiAgents"])
 
     def test_youtube_title_uses_hook_and_link_block(self):
         c = {"hook": "Want a free, open-source tool for AI agents?", "title": "owner/repo"}

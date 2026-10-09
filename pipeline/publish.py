@@ -9,7 +9,7 @@ import os
 import time
 import urllib.parse
 
-from . import buffer, db, zernio
+from . import buffer, db, seo, zernio
 from .http import request
 
 log = logging.getLogger("publish")
@@ -17,14 +17,13 @@ GRAPH = "https://graph.facebook.com/v21.0"
 
 
 def social_caption(c):
-    """Facebook/Instagram caption: no link (a link in the caption kills comments). The keyword comment
-    triggers the DM with the link, which is what drives engagement."""
+    """Facebook/Instagram/TikTok caption: no link (a link in the caption kills comments). The keyword comment
+    triggers the DM with the link, which is what drives engagement. Keyword-first for in-app search."""
     cta = (c.get("_cta") or {}) if isinstance(c, dict) else {}
     kw = cta.get("keyword")
     what = "all the links" if (cta.get("response") or "").startswith("Here are the links") else "the link"
-    hook = c["caption"].split("\n\nSource:")[0].strip()
-    ask = f"\n\nComment {kw} and I'll DM you {what} \U0001F4E9" if kw else ""
-    return hook + ask + "\n\n" + " ".join(json.loads(c["hashtags"]))
+    ask = f"Comment {kw} and I'll DM you {what} 📩" if kw else ""
+    return seo.social_caption(c, ask)
 
 
 def _form(d):
@@ -57,20 +56,16 @@ def link_block(response):
 
 
 def youtube_title(c):
-    """The question hook makes a better Shorts title than a repo slug; YouTube allows 100 characters."""
-    base = (c.get("hook") or c["title"]).strip()
-    if len(base) > 90:
-        base = base[:87].rsplit(" ", 1)[0] + "..."
-    return f"{base} #Shorts"
+    """Keyword-first title (the subject's name is searchable); YouTube allows 100 characters."""
+    return f"{seo.title(c)} #Shorts"
 
 
 def youtube_upload(token, c, links=None):
     """YouTube Data API v3 resumable upload. Shorts are detected by 9:16 + <=3 min.
     YouTube viewers are sent to the description, so the approved link(s) go there."""
-    desc = c["caption"] + (f"\n\n{links}" if links else "")
-    meta = {"snippet": {"title": youtube_title(c),
-                        "description": desc + "\n\n" + " ".join(json.loads(c["hashtags"])),
-                        "categoryId": "28"},
+    meta = {"snippet": {"title": youtube_title(c), "description": seo.youtube_description(c, links),
+                        "tags": seo.youtube_tags(c), "categoryId": "28",
+                        "defaultLanguage": "en", "defaultAudioLanguage": "en"},
             # containsSyntheticMedia: the narration is an AI clone of the owner's voice (YouTube's
             # "altered or synthetic content" disclosure)
             "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False,
@@ -237,7 +232,7 @@ def run(conn):
         log.warning("release cleanup failed: %s", e)
     configured = platforms()
     rows = conn.execute(
-        "SELECT c.*, t.id AS tid FROM contents c JOIN topics t ON t.id=c.topic_id "
+        "SELECT c.*, t.id AS tid, t.source AS tsource, t.raw AS traw FROM contents c JOIN topics t ON t.id=c.topic_id "
         "WHERE t.status IN ('READY','WAITING_FOR_API') AND c.status='qc_passed'").fetchall()
     n = 0
     for c in rows:
@@ -261,7 +256,9 @@ def run(conn):
                     log.info("skip facebook for %s: longer than the 60 s Reels limit", c["title"])
                     continue
                 elif name == "youtube":
-                    post_id, url = youtube_upload(youtube_token(), c, link_block((c.get("_cta") or {}).get("response")))
+                    tok = youtube_token()
+                    post_id, url = youtube_upload(tok, c, link_block((c.get("_cta") or {}).get("response")))
+                    seo.add_to_playlist(conn, tok, c, post_id)
                 else:
                     video_url = video_url or public_video_url(c)
                     if not video_url:

@@ -147,7 +147,7 @@ def ai_replies(conn, title, facts, comments):
     return res
 
 
-YT_REPLIES_PER_DAY = int(os.environ.get("YT_REPLIES_PER_DAY", "25"))  # 50 quota units each
+YT_REPLIES_PER_DAY = int(os.environ.get("YT_REPLIES_PER_DAY", "20"))  # 50 quota units each (uploads 5x1600 + playlists 5x50)
 # how often each post's comments are read, and for how long after publishing (API quota):
 # YouTube: 10,000 units/day and an upload costs 1,600; Meta allows private replies only for 7 days
 CHECK_EVERY_MIN = {"youtube": 120, "facebook": 60, "instagram": 60}
