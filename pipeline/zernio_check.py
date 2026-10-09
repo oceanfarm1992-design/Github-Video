@@ -72,14 +72,22 @@ def run(conn=None):
                                       for ch in buffer.channels()]
         except Exception as e:
             out["buffer_error"] = str(e)[:300]
-        try:  # schema check: where Pinterest boards live (type names only)
-            q = """query { pm: __type(name: "PinterestMetadata") { name fields { name } }
-                           ch: __type(name: "Channel") { fields { name type { name kind ofType { name } } } } }"""
-            sch = buffer._gql(q)
-            out["buffer_schema"] = {
-                "PinterestMetadata": [f["name"] for f in ((sch.get("pm") or {}).get("fields") or [])],
-                "Channel.metadata": next((f["type"] for f in (sch.get("ch") or {}).get("fields", [])
-                                          if f["name"] == "metadata"), None)}
+        try:  # schema check: per-network post metadata inputs (type names only)
+            meta = buffer._gql("""query { t: __type(name: "CreatePostInput") {
+                inputFields { name type { name kind ofType { name } } } } }""")
+            mt = next((f["type"] for f in (meta.get("t") or {}).get("inputFields", []) if f["name"] == "metadata"), {})
+            mname = mt.get("name") or (mt.get("ofType") or {}).get("name")
+            fields = buffer._gql("""query($n: String!) { t: __type(name: $n) {
+                inputFields { name type { name kind ofType { name } } } } }""", {"n": mname})
+            out["buffer_post_metadata"] = {f["name"]: f["type"].get("name") or (f["type"].get("ofType") or {}).get("name")
+                                           for f in (fields.get("t") or {}).get("inputFields", [])}
+            li = out["buffer_post_metadata"].get("linkedin")
+            if li:
+                lf = buffer._gql("""query($n: String!) { t: __type(name: $n) {
+                    inputFields { name type { name kind ofType { name kind } } } } }""", {"n": li})
+                out["buffer_linkedin_input"] = [(f["name"], f["type"].get("kind"), f["type"].get("name")
+                                                 or (f["type"].get("ofType") or {}).get("name"))
+                                                for f in (lf.get("t") or {}).get("inputFields", [])]
         except Exception as e:
             out["buffer_schema_error"] = str(e)[:300]
     for line in json.dumps(out, indent=1).splitlines():
