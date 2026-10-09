@@ -154,9 +154,14 @@ CHECK_EVERY_MIN = {"youtube": 120, "facebook": 60, "instagram": 60}
 CHECK_FOR_DAYS = {"youtube": 3, "facebook": 7, "instagram": 7}
 
 
+# platforms whose comments get automatic replies (YouTube is off by the owner's choice; add it back with
+# ENGAGE_PLATFORMS=youtube,facebook,instagram)
+ENGAGE_PLATFORMS = {p.strip() for p in os.environ.get("ENGAGE_PLATFORMS", "facebook,instagram").split(",") if p.strip()}
+
+
 def due(conn, platform, post_id, published_at):
     """Should this post's comments be read in this run?"""
-    if platform not in CHECK_EVERY_MIN:
+    if platform not in CHECK_EVERY_MIN or platform not in ENGAGE_PLATFORMS:
         return False  # TikTok / Pinterest: no comment API in use
     age_cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - CHECK_FOR_DAYS[platform] * 86400))
     if (published_at or "") < age_cutoff:

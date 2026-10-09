@@ -49,6 +49,7 @@ jobs:
       MAX_LLM_CALLS_PER_DAY: ${{ vars.MAX_LLM_CALLS_PER_DAY || '100' }}
       MAX_VIDEOS_PER_DAY: ${{ github.event.inputs.max_videos || vars.MAX_VIDEOS_PER_DAY || '5' }}
       MAX_VIDEOS_PER_RUN: ${{ vars.MAX_VIDEOS_PER_RUN || '1' }}
+      ENGAGE_PLATFORMS: ${{ vars.ENGAGE_PLATFORMS || 'facebook,instagram' }}
       DAILY_GITHUB_VIDEOS: ${{ vars.DAILY_GITHUB_VIDEOS || '2' }}
       DAILY_NEWS_VIDEOS: ${{ vars.DAILY_NEWS_VIDEOS || '0' }}
       DAILY_SITES_VIDEOS: ${{ vars.DAILY_SITES_VIDEOS || '1' }}

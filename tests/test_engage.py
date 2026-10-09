@@ -111,6 +111,7 @@ class EngageTests(unittest.TestCase):
             (engage.llm, "call_json"): fake_llm,
         }
         engage.REPLY_DELAY = (0, 0)
+        patches[(engage, "ENGAGE_PLATFORMS")] = {"youtube", "facebook", "instagram"}
         olds = {k: getattr(*k) for k in patches}
         try:
             for k, v in patches.items():
@@ -134,6 +135,10 @@ class QuotaTests(unittest.TestCase):
     def test_due_throttles_per_platform_and_age(self):
         conn = db.connect(os.path.join(tempfile.mkdtemp(), "q.db"))
         now = db.now_iso()
+        self.assertFalse(engage.due(conn, "youtube", "v0", now))          # YouTube replies off by default
+        self.assertTrue(engage.due(conn, "instagram", "i0", now))
+        old_platforms, engage.ENGAGE_PLATFORMS = engage.ENGAGE_PLATFORMS, {"youtube", "facebook", "instagram"}
+        self.addCleanup(setattr, engage, "ENGAGE_PLATFORMS", old_platforms)
         old = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5 * 86400))
         self.assertTrue(engage.due(conn, "youtube", "v1", now))
         db.kv_set(conn, "checked:youtube:v1", str(time.time()))
