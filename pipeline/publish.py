@@ -157,7 +157,15 @@ def platforms():
         for svc in buffer.SERVICES:
             if buffer.available(svc):
                 out[svc] = (True, lambda c, url, svc=svc: buffer.publish(svc, c, url))
+    if zernio.enabled() and os.environ.get("STORIES", "1") != "0":  # the same video as a 24 h Story
+        for plat in ("instagram", "facebook"):
+            if zernio.available(plat):
+                out[f"{plat}_story"] = (True, lambda c, url, plat=plat: zernio.publish_story(plat, c, url))
     return out
+
+
+# platform length limits (seconds); longer videos skip that platform but still go everywhere else
+MAX_SECONDS = {"facebook": 60, "instagram_story": 60, "facebook_story": 120}
 
 
 def youtube_token_available():
@@ -252,8 +260,8 @@ def run(conn):
                 if prior:  # durable guard: survives a lost local state
                     post_id, url = prior
                     log.info("%s already has %s on %s; recording, not re-posting", c["title"], post_id, name)
-                elif name == "facebook" and video_seconds(c["video_path"]) > 60:
-                    log.info("skip facebook for %s: longer than the 60 s Reels limit", c["title"])
+                elif name in MAX_SECONDS and video_seconds(c["video_path"]) > MAX_SECONDS[name]:
+                    log.info("skip %s for %s: longer than its %d s limit", name, c["title"], MAX_SECONDS[name])
                     continue
                 elif name == "youtube":
                     tok = youtube_token()

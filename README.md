@@ -62,6 +62,7 @@ The `engage` stage (every 30 min) answers follower comments automatically on Fac
 |---|---|
 | YouTube Shorts | Implemented (resumable upload; needs OAuth credentials) |
 | TikTok / Instagram / X | Not implemented â€“ add an adapter in `pipeline/publish.py`; until credentials exist jobs stay `WAITING_FOR_API` |
+| Instagram / Facebook Stories | Every video also goes to Stories through Zernio (`STORIES`=1; Instagram Stories skip videos over 60 s, Facebook over 120 s) |
 | CTA comment auto-replies | `cta_map` table stores keyword â†’ resource â†’ approved response; no reply bot yet |
 
 ## Known limits

@@ -57,5 +57,31 @@ class SeoTests(unittest.TestCase):
         self.assertNotIn("http", s)
 
 
+class StoryTests(unittest.TestCase):
+    def test_story_body_and_platforms(self):
+        import os
+        from pipeline import zernio
+        calls = []
+        olds = (zernio._call, zernio.account, zernio.enabled, zernio.available)
+        zernio._call = lambda path, body=None, **k: calls.append(body) or {
+            "post": {"_id": "s1", "platforms": [{"platform": "instagram", "status": "published"}]}}
+        zernio.account = lambda plat: {"_id": "acc"}
+        zernio.enabled = lambda: True
+        zernio.available = lambda plat: True
+        try:
+            self.assertEqual(zernio.publish_story("instagram", GH, "https://v/x.mp4"), ("s1", ""))
+            os.environ["STORIES"] = "1"
+            self.assertIn("instagram_story", publish.platforms())
+            os.environ["STORIES"] = "0"
+            self.assertNotIn("instagram_story", publish.platforms())
+        finally:
+            zernio._call, zernio.account, zernio.enabled, zernio.available = olds
+            os.environ.pop("STORIES", None)
+        body = calls[0]
+        self.assertEqual(body["platforms"][0]["platformSpecificData"], {"contentType": "story"})
+        self.assertNotIn("content", body)  # Stories show no caption
+        self.assertEqual(publish.MAX_SECONDS["instagram_story"], 60)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -100,6 +100,31 @@ def publish_reel(platform, c, video_url):
     return pid, plat.get("platformPostUrl", "")
 
 
+def publish_story(platform, c, video_url):
+    """The same video as a Story (24 h, no caption shown; viewers reply by DM). Returns (post_id, url)."""
+    acct = account(platform)
+    body = {"mediaItems": [{"type": "video", "url": video_url}],
+            "platforms": [{"platform": platform, "accountId": acct["_id"],
+                           "platformSpecificData": {"contentType": "story"}}],
+            "publishNow": True}
+    import uuid
+    key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"story|{acct['_id']}|{video_url}"))
+    try:
+        post = _call("/posts", body, timeout=180, idempotency_key=key).get("post", {})
+    except RuntimeError as e:
+        existing = re.search(r'"existingPostId"\s*:\s*"([^"]+)"', str(e))
+        if "409" not in str(e) or not existing:
+            raise
+        return existing.group(1), ""
+    plat = next((p for p in post.get("platforms", []) if p.get("platform") == platform), {})
+    if plat.get("status") in ("failed", "error", "rejected") or (plat.get("errorMessage") and plat.get("status") != "published"):
+        raise RuntimeError(f"zernio {platform} story: {plat.get('errorMessage') or plat.get('status')}")
+    pid = post.get("_id") or _first(plat, "platformPostId")
+    if not pid:
+        raise RuntimeError(f"zernio {platform} story: no post id in response")
+    return pid, plat.get("platformPostUrl", "")
+
+
 PUBLIC_REPLY = "Check your inbox, thank you!"  # public reply under the keyword comment; the DM carries the link
 
 
