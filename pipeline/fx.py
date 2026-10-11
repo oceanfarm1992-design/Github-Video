@@ -237,7 +237,7 @@ def countable(word):
 
 
 def count_text(word, k):
-    """`word` counted up to a fraction k of its value ("1.7k" at k=0.5 -> "0.9k"); None if not a number.
+    """`word` counted up to a fraction k of its value ("1.7k" at k=0.5 -> "0.8k"); None if not a number.
     Used only for numbers already in the script (real star counts), never invented ones."""
     m = NUM_RE.match(word)
     if not m:

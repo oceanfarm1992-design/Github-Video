@@ -33,9 +33,6 @@ DISCLAIMER = os.environ.get("DISCLAIMER_TEXT", "For educational purposes only")
 MUSIC_VOLUME = os.environ.get("MUSIC_VOLUME", "0.22")  # music level before ducking (1.0 = full)
 
 
-SFX_VOLUME = float(os.environ.get("SFX_VOLUME", "0.6") or 0.6)
-
-
 LOUDNESS = "I=-14:TP=-1.5:LRA=11"  # the level Reels, Shorts and TikTok play at
 
 
@@ -55,9 +52,10 @@ def loudnorm(audio):
 
 
 def mix_sfx(audio, track, total, dest):
-    """Lays the sound-effects track over the voice + music."""
+    """Lays the sound-effects track over the voice + music (SFX_VOLUME, default 0.6)."""
+    vol = _env_float("SFX_VOLUME", 0.6, 0.0, 2.0)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(audio), "-i", str(track), "-filter_complex",
-           f"[1:a]aresample=44100,volume={SFX_VOLUME}[s];[0:a]aresample=44100[v];"
+           f"[1:a]aresample=44100,volume={vol}[s];[0:a]aresample=44100[v];"
            "[v][s]amix=inputs=2:duration=first:normalize=0[out]", "-map", "[out]",
            "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "128k", str(dest)]
     subprocess.run(cmd, check=True, timeout=120)

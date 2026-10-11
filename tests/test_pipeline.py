@@ -117,7 +117,7 @@ class Tests(unittest.TestCase):
     def test_emphasis_words(self):
         for w in ("1.7k", "owner/repo", "GITHUB", "10"):
             self.assertTrue(motion.is_emphasis(w), w)
-        for w in ("tool", "A", "Meet"):
+        for w in ("tool", "A", "Meet", "AI"):
             self.assertFalse(motion.is_emphasis(w), w)
 
     def test_kinetic_text_rises_in_then_settles(self):

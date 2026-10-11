@@ -103,12 +103,13 @@ def text_height(text):
 
 # ------------------------------------------------------ kinetic typography
 EMPH_RE = re.compile(r"\d")
+PLAIN_CAPS = {"AI", "I", "OK", "TV", "US"}  # in nearly every line: highlighting them would mean nothing
 
 
 def is_emphasis(word):
     """Numbers (stars, counts), repo names (owner/repo) and ALL-CAPS words carry the meaning."""
     w = word.strip(".,!?:;\"'()")
-    return bool(EMPH_RE.search(w)) or "/" in w or (len(w) >= 2 and w.isupper())
+    return bool(EMPH_RE.search(w)) or "/" in w or (len(w) >= 2 and w.isupper() and w not in PLAIN_CAPS)
 
 
 def pop(t):
@@ -118,7 +119,7 @@ def pop(t):
     return ease_out(t / 0.09) if t < 0.09 else math.exp(-(t - 0.09) * 9)
 
 
-@lru_cache(maxsize=4096)
+@lru_cache(maxsize=1024)  # ~75 MB at most
 def word_sprite(word, size, col):
     fnt = font(size)
     img = Image.new("RGBA", (int(fnt.getlength(word)) + 6, int(size * 1.3) + 6), (0, 0, 0, 0))
@@ -467,7 +468,7 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
                 ImageDraw.Draw(img).text(((W - dw) / 2, H - 190), disclaimer, font=df, fill=col)
         return img
 
-    frozen = {}  # the outgoing shot of each transition, held on its last frame
+    frozen = None  # (scene, image): the outgoing shot of the current transition, held on its last frame
     direction = 1
     for fi in range(n):
         t = fi / FPS
@@ -475,15 +476,15 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         lt = t - bounds[si][0]
         tr = trans[si]
         if tr and lt < TRANSITION:
-            if si not in frozen:
-                frozen[si] = compose(bounds[si][0] - 1 / FPS, si - 1, fi)
+            if not frozen or frozen[0] != si:
+                frozen = (si, compose(bounds[si][0] - 1 / FPS, si - 1, fi))
                 direction = -direction
             cur = compose(t, si, fi)
             u = lt / TRANSITION
             if tr == "whip":
-                img = fx.whip(frozen[si], cur, u, direction, top=BAR_Y + 20)
+                img = fx.whip(frozen[1], cur, u, direction, top=BAR_Y + 20)
             else:
-                img = fx.TRANSITIONS[tr](frozen[si], cur, u)
+                img = fx.TRANSITIONS[tr](frozen[1], cur, u)
         else:
             img = compose(t, si, fi)
         dx = dy = 0
