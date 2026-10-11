@@ -153,7 +153,7 @@ def draw_kinetic_text(img, text, ty, lt, active, active_since, alpha=1.0, count=
                 scale = 1 + POP * pop(lt - active_since) if i == active else 1.0
                 wsize = max(8, round(size * scale))
                 shown = words[i]
-                if count and fx.NUM_RE.match(shown):  # counts up to its real value as it rises in
+                if count and fx.countable(shown):  # counts up to its real value as it rises in
                     k = (lt - i * stagger) / COUNT_TIME
                     shown = fx.count_text(shown, ease_out(k)) if k < 1 else shown
                 spr = word_sprite(shown, wsize, word_colour(words[i], i, active))

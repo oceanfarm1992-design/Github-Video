@@ -230,6 +230,12 @@ TRANSITIONS = {"whip": whip, "panel": panel_wipe, "circle": circle_wipe}
 NUM_RE = re.compile(r"^(\d+(?:\.\d+)?)([kKmM]?)(\+?)([.,!?:;]*)$")
 
 
+def countable(word):
+    """Worth a count-up: 10 and above, or with a k/M suffix (list numbers like "1." stay still)."""
+    m = NUM_RE.match(word)
+    return bool(m) and (bool(m.group(2)) or float(m.group(1)) >= 10)
+
+
 def count_text(word, k):
     """`word` counted up to a fraction k of its value ("1.7k" at k=0.5 -> "0.9k"); None if not a number.
     Used only for numbers already in the script (real star counts), never invented ones."""

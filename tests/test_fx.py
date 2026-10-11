@@ -36,6 +36,8 @@ class FxTests(unittest.TestCase):
         self.assertEqual(fx.count_text("1.7k", 0.5), "0.8k")
         self.assertEqual(fx.count_text("10,", 0.5), "5,")
         self.assertIsNone(fx.count_text("tool", 0.5))
+        self.assertTrue(fx.countable("10.") and fx.countable("1.7k") and fx.countable("2M+"))
+        self.assertFalse(fx.countable("1.") or fx.countable("3") or fx.countable("tool"))
 
     def test_partial_outline_grows_with_progress(self):
         pts = fx.outline_points((0, 0, 200, 100), 10)
