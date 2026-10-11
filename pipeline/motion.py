@@ -1,22 +1,32 @@
 """Motion engine: draws every frame with Pillow and yields raw RGB bytes for FFmpeg.
 
-Techniques: Ken Burns pan/zoom on the preview card, ease-out entrance + text slide/fade,
-word-by-word karaoke subtitles synced to the narration, audio-reactive pulse (RMS envelope),
-optional watermark. Fade-in/out to black is applied by FFmpeg.
+Techniques: Ken Burns pan/zoom on the preview card, kinetic typography (words rise in one by one
+through a line mask, the spoken word pops, numbers and names in an accent colour), word-by-word karaoke
+synced to the narration, audio-reactive pulse (RMS envelope), optional watermark. Fade-in/out to black
+is applied by FFmpeg.
 """
 import array
+import math
 import os
+import re
 import subprocess
 from functools import lru_cache
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
+
+from . import fx
 
 W, H = 1080, 1920
 FPS = 30
 CARD_W = 960
 BG_TOP, BG_BOT = (14, 16, 28), (44, 48, 72)
 COL_DONE, COL_NOW, COL_NEXT = (255, 255, 255), (255, 214, 102), (120, 130, 160)
+COL_EMPH = (110, 180, 255)  # numbers, repo names, ALL-CAPS words once spoken
 MARGIN = 60
+STAGGER = 0.045      # s between word entrances
+STAGGER_TOTAL = 0.8  # the last word is in by this time, however long the line
+RISE = 0.32          # s for a word to rise through its line mask
+POP = 0.10           # extra scale on the word being spoken
 
 
 # ---------------------------------------------------------------- easing
@@ -31,6 +41,7 @@ def ease_in_out(t):
 
 
 # ----------------------------------------------------------------- assets
+@lru_cache(maxsize=64)
 def font(size):
     for name in ("DejaVuSans-Bold.ttf", "arialbd.ttf", "Arial Bold.ttf", "LiberationSans-Bold.ttf"):
         try:
@@ -90,19 +101,73 @@ def text_height(text):
     return len(lines) * lh
 
 
-def render_text_layer(text, active):
-    """RGBA layer with words coloured by progress: done / current (accent) / upcoming."""
+# ------------------------------------------------------ kinetic typography
+EMPH_RE = re.compile(r"\d")
+
+
+def is_emphasis(word):
+    """Numbers (stars, counts), repo names (owner/repo) and ALL-CAPS words carry the meaning."""
+    w = word.strip(".,!?:;\"'()")
+    return bool(EMPH_RE.search(w)) or "/" in w or (len(w) >= 2 and w.isupper())
+
+
+def pop(t):
+    """Scale bump for the spoken word: quick rise, then a soft decay."""
+    if t < 0:
+        return 0.0
+    return ease_out(t / 0.09) if t < 0.09 else math.exp(-(t - 0.09) * 9)
+
+
+@lru_cache(maxsize=4096)
+def word_sprite(word, size, col):
+    fnt = font(size)
+    img = Image.new("RGBA", (int(fnt.getlength(word)) + 6, int(size * 1.3) + 6), (0, 0, 0, 0))
+    ImageDraw.Draw(img).text((0, 0), word, font=fnt, fill=col + (255,))
+    return img
+
+
+def word_colour(word, i, active):
+    if i == active:
+        return COL_NOW
+    if i < active:
+        return COL_EMPH if is_emphasis(word) else COL_DONE
+    return COL_NEXT
+
+
+COUNT_LEAD = 0.7  # s a number spends counting up before it is spoken
+
+
+def draw_kinetic_text(img, text, ty, lt, active, active_since, alpha=1.0, word_times=None):
+    """Draws the scene text at y=ty, `lt` seconds into the scene. Each word rises into place through
+    its own line box (masked reveal), staggered; the word being spoken pops slightly. With word_times,
+    numbers count up and land on their real value as they are spoken."""
     words, fnt, lines, size, lh = text_layout(text)
-    layer = Image.new("RGBA", (W - 2 * MARGIN, len(lines) * lh + 10), (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
     space = fnt.getlength(" ")
+    stagger = min(STAGGER, STAGGER_TOTAL / max(1, len(words)))
     for row, idxs in enumerate(lines):
-        x = 0
+        x, y = MARGIN, ty + row * lh
         for i in idxs:
-            col = COL_DONE if i < active else (COL_NOW if i == active else COL_NEXT)
-            d.text((x, row * lh), words[i], font=fnt, fill=col + (255,))
-            x += fnt.getlength(words[i]) + space
-    return layer
+            ww = fnt.getlength(words[i])
+            e = ease_out((lt - i * stagger) / RISE)
+            if e > 0:
+                scale = 1 + POP * pop(lt - active_since) if i == active else 1.0
+                wsize = max(8, round(size * scale))
+                shown = words[i]
+                if word_times and fx.NUM_RE.match(shown):
+                    k = (lt - (word_times[i] - COUNT_LEAD)) / COUNT_LEAD
+                    shown = fx.count_text(shown, ease_out(k)) if k < 1 else shown
+                spr = word_sprite(shown, wsize, word_colour(words[i], i, active))
+                dy = int((1 - e) * lh * 0.8)  # rises from below; the part under the line box stays hidden
+                if dy < spr.height:
+                    if dy:
+                        spr = spr.crop((0, 0, spr.width, max(1, min(spr.height, lh - dy))))
+                    a = alpha * min(1.0, e * 1.6)
+                    if a < 0.999:
+                        spr = spr.copy()
+                        spr.putalpha(spr.getchannel("A").point(lambda v, k=a: int(v * k)))
+                    grow = (wsize - size) / 2  # scale around the word's centre
+                    img.paste(spr, (int(x - grow * ww / size), int(y + dy - grow)), spr)
+            x += ww + space
 
 
 def word_starts(text, duration):
@@ -145,7 +210,7 @@ class Card:
     """Preview image with Ken Burns pan/zoom and audio-reactive pulse."""
 
     def __init__(self, path):
-        src = Image.open(path).convert("RGB")
+        src = fx.grade(Image.open(path).convert("RGB"))
         self.h = min(int(src.height * CARD_W / src.width), 760)
         self.big = ImageOps.fit(src, (int(CARD_W * 1.2), int(self.h * 1.2)), Image.LANCZOS)
         self.mask = Image.new("L", (CARD_W, self.h), 0)
@@ -169,7 +234,7 @@ class Panel:
     MAX_SPEED = max(60.0, min(600.0, float(os.environ.get("SCROLL_SPEED", "200") or 200)))
 
     def __init__(self, page_path, url, height):
-        src = Image.open(page_path).convert("RGB")
+        src = fx.grade(Image.open(page_path).convert("RGB"))
         self.page = src.resize((CARD_W, int(src.height * CARD_W / src.width)), Image.LANCZOS)
         self.h = height
         self.view_h = height - self.BAR
@@ -212,8 +277,7 @@ class Panel:
             shade = Image.new("L", view.size, int(150 * strength))
             ImageDraw.Draw(shade).rounded_rectangle(r, 18, fill=0)
             view = Image.composite(Image.new("RGB", view.size, (0, 0, 0)), view, shade)
-            gold = tuple(int(c * strength + 20 * (1 - strength)) for c in (255, 214, 102))
-            ImageDraw.Draw(view).rounded_rectangle(r, 18, outline=gold, width=5)
+            view = fx.draw_on_outline(view, r, strength)  # the outline draws itself as the camera arrives
         img = self.chrome.copy()
         img.paste(view, (0, self.BAR))
         return img
@@ -229,23 +293,43 @@ class Panel:
         return x + w / 2, y + h / 2, max(1.12, zoom), (x, y, w, h)
 
 
+TRANSITION = 0.4  # s
+BAR_Y = 120       # progress bar; rows above BAR_Y + 20 stay still during a whip-pan
+
+
+def plan_transitions(kinds, page_of):
+    """Transition into each scene: None when the visual stays (the camera or the text carries the change),
+    a circle wipe into the final call to action, otherwise whip-pans alternating with panel wipes."""
+    out, last, n = [None] * len(kinds), len(kinds) - 1, 0
+    for i in range(1, len(kinds)):
+        if kinds[i] == kinds[i - 1] and page_of[i] == page_of[i - 1]:
+            continue
+        if i == last:
+            out[i] = "circle"
+        else:
+            out[i] = "whip" if n % 2 == 0 or kinds[i - 1] != "scroll" else "panel"
+            n += 1
+    return out
+
+
 def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=None, page_url=None,
-           scene_pages=None, scene_labels=None, scene_focus=None, disclaimer=None):
+           scene_pages=None, scene_labels=None, scene_focus=None, disclaimer=None, events=None):
     """scenes: [(text, seconds)]. Yields raw RGB24 bytes, FPS per second.
     scene_pages: per scene (page_path, url) or None -> that scene shows the page in a browser window;
     consecutive scenes on the same page share one continuous scroll. Without it, a single page_path is
     shown on the middle scenes and the preview card on the first and last (GitHub videos).
-    scene_labels: per scene short label drawn above the visual (e.g. "#3/10  Runway")."""
+    scene_labels: per scene short label drawn above the visual (e.g. "#3/10  Runway").
+    events: a list that receives (seconds, sound) cues for the sound design (filled before the first frame)."""
     total = sum(d for _, d in scenes)
     n = round(total * FPS)
     env = envelope(audio_path, n)
     card = Card(card_path) if card_path else None
-    bg = background().copy()
-    d = ImageDraw.Draw(bg)
+    backdrop = fx.Backdrop(BG_TOP, BG_BOT)
+    wm = None
     if watermark:
         f = font(34)
-        wlen = f.getlength(watermark)
-        d.text(((W - wlen) / 2, H - 120), watermark, font=f, fill=(110, 120, 150))
+        wm = Image.new("RGBA", (int(f.getlength(watermark)) + 4, 50), (0, 0, 0, 0))
+        ImageDraw.Draw(wm).text((0, 0), watermark, font=f, fill=(110, 120, 150, 255))
 
     last = len(scenes) - 1
     if scene_pages is None:
@@ -279,10 +363,11 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         kinds = [k if k != "scroll" or panels.get(scene_pages[i][0]) else fallback for i, k in enumerate(kinds)]
     page_of = [scene_pages[i][0] if kinds[i] == "scroll" else None for i in range(len(scenes))]
     # scroll span per run of consecutive scenes on the same page; entrance animation at each new visual
-    span_of, run_start = [None] * len(scenes), []
+    span_of, run_start, run_first = [None] * len(scenes), [], []
     for i in range(len(scenes)):
         new = i == 0 or kinds[i] != kinds[i - 1] or page_of[i] != page_of[i - 1]
         run_start.append(bounds[i][0] if new else run_start[i - 1])
+        run_first.append(i if new else run_first[i - 1])
     i = 0
     while i < len(scenes):
         j = i
@@ -292,31 +377,57 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
             span_of[k] = (bounds[i][0], bounds[j][1])
         i = j + 1
     label_font = font(52)
-
     starts = [word_starts(t, dur - 0.4) for t, dur in scenes]
-    layers = {}
+    trans = plan_transitions(kinds, page_of)
 
-    for fi in range(n):
-        t = fi / FPS
-        si = next(i for i, (a, b) in enumerate(bounds) if t < b) if t < total else last
+    def move_time(si):  # guided tour: seconds for the camera to glide to the scene's section
+        return min(1.4, (bounds[si][1] - bounds[si][0]) * 0.35)
+
+    # impacts (shake + sound) and the sound cues, all known before the first frame
+    impacts = [(0.05, 7)]
+    cues = [(0.0, "impact")]
+    for si, tr in enumerate(trans):
+        if tr:
+            a = bounds[si][0]
+            cues.append((max(0.0, a - 0.06), "whoosh"))
+            impacts.append((a + TRANSITION, 12 if tr == "circle" else 5))
+            if tr == "circle":
+                cues.append((a + TRANSITION * 0.85, "impact"))
+        if scene_focus and scene_focus[si] and kinds[si] == "scroll":
+            cues.append((bounds[si][0] + move_time(si), "click"))
+    if events is not None:
+        events.extend(sorted(cues))
+
+    def compose(t, si, fi):
         a, b = bounds[si]
         lt, text = t - a, scenes[si][0]
-        img = bg.copy()
+        img = backdrop.frame(fi)
+        if wm:
+            img.paste(wm, ((W - wm.width) // 2, H - 120), wm)
         idraw = ImageDraw.Draw(img)
-        idraw.rectangle([MARGIN, 120, MARGIN + int((W - 2 * MARGIN) * (t / total)), 132], fill=(90, 160, 255))
-        e = ease_out((t - run_start[si]) / 0.6)              # entrance: rise + fade in
+        bar = MARGIN + int((W - 2 * MARGIN) * (t / total))
+        idraw.rounded_rectangle([MARGIN - 3, BAR_Y - 3, bar + 3, BAR_Y + 15], 9, fill=(40, 70, 120))  # glow
+        idraw.rectangle([MARGIN, BAR_Y, bar, BAR_Y + 12], fill=fx.ACCENT)
+        whipped = trans[run_first[si]] is not None  # the transition is this visual's entrance
+        since = t - run_start[si]
+        e = 1.0 if whipped else ease_out(since / 0.6)      # entrance: rise + fade in
         if labels[si]:  # e.g. "#3/10  Runway": which item we are on, above the visual
             idraw.text((MARGIN, 150 + int(30 * (1 - e))), labels[si], font=label_font,
-                       fill=(255, 214, 102) if e >= 1 else tuple(int(c * e) for c in (255, 214, 102)))
+                       fill=fx.GOLD if e >= 1 else tuple(int(c * e) for c in fx.GOLD))
 
         if kinds[si] == "card":
             c = card.frame(t / total, env[fi])
+            c = fx.light_sweep(c, (since - 0.6) / 0.8)
+            sc = 1.0 if whipped else 0.9 + 0.1 * fx.spring(since)  # punch-in with a soft overshoot
             m = card.mask.point(lambda v, e=e: int(v * e)) if e < 1 else card.mask
-            yy = y_card + int(70 * (1 - e))
+            if sc != 1.0:
+                size = (int(CARD_W * sc), int(card.h * sc))
+                c, m = c.resize(size, Image.BILINEAR), m.resize(size, Image.BILINEAR)
+            x, yy = (W - c.width) // 2, y_card + (card.h - c.height) // 2
             if e >= 1:
-                idraw.rounded_rectangle([MARGIN - 6, yy - 6, MARGIN + CARD_W + 6, yy + card.h + 6], 32,
+                idraw.rounded_rectangle([x - 6, yy - 6, x + c.width + 6, yy + c.height + 6], 32,
                                         fill=(60, 80, 130))
-            img.paste(c, (MARGIN, yy), m)
+            img.paste(c, (x, yy), m)
             ty = y_card + card.h + 80
         elif kinds[si] == "scroll":
             panel = panels[page_of[si]]
@@ -324,35 +435,29 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
                 # guided tour: glide to this scene's section and zoom in, then drift in slowly
                 prev = panel.target(scene_focus[si - 1]) if si > 0 else panel.target(None)
                 cur = panel.target(scene_focus[si])
-                move = min(1.4, (b - a) * 0.35)
+                move = move_time(si)
                 k = ease_in_out(lt / move)
                 drift = 1 + 0.05 * max(0.0, min(1.0, (lt - move) / max(0.1, (b - a) - move)))
                 cx, cy = prev[0] + (cur[0] - prev[0]) * k, prev[1] + (cur[1] - prev[1]) * k
                 pimg = panel.frame_at(cx, cy, (prev[2] + (cur[2] - prev[2]) * k) * drift,
-                                      spot=cur[3], strength=k)  # spotlight fades in as the camera arrives
+                                      spot=cur[3], strength=k)  # spotlight draws on as the camera arrives
             else:
                 s_start, s_end = span_of[si]
                 span = s_end - s_start
                 hold = min(0.8, span * 0.15)
                 prog = ease_in_out((t - s_start - hold) / max(0.1, span - 2 * hold))  # hold at top and bottom
                 pimg = panel.frame(prog, span)
+            pimg = fx.light_sweep(pimg, (since - 0.45) / 0.8)
             m = panel.mask.point(lambda v, e=e: int(v * e)) if e < 1 else panel.mask
             img.paste(pimg, (MARGIN, y_panel + int(70 * (1 - e))), m)
             ty = y_panel + panel.h + 60
         else:
             ty = (H - text_height(text)) // 2
 
-        active = sum(1 for s in starts[si] if lt >= s) - 1 if lt >= starts[si][0] else -1
-        key = (si, active)
-        if key not in layers:
-            layers[key] = render_text_layer(text, active if active >= 0 else -1)
-        layer = layers[key]
-        fade_in, fade_out = ease_out(lt / 0.35), 1 - ease_in_out((lt - (b - a - 0.25)) / 0.25)
-        alpha = max(0.0, min(1.0, fade_in * fade_out))
-        r, g, bl, al = layer.split()
-        if alpha < 1:
-            al = al.point(lambda v, k=alpha: int(v * k))
-        img.paste(Image.merge("RGB", (r, g, bl)), (MARGIN, ty + int(36 * (1 - fade_in))), al)
+        active = sum(1 for s_ in starts[si] if lt >= s_) - 1 if lt >= starts[si][0] else -1
+        fade_out = max(0.0, min(1.0, 1 - ease_in_out((lt - (b - a - 0.25)) / 0.25)))
+        draw_kinetic_text(img, text, ty, lt, active, starts[si][active] if active >= 0 else 0.0, fade_out,
+                          word_times=starts[si])
         if disclaimer and t < 2.4:  # small on-screen note for the first ~2 s, not spoken
             a_ = 1 - ease_in_out((t - 1.8) / 0.6)
             if a_ > 0:
@@ -360,4 +465,31 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
                 dw = df.getlength(disclaimer)
                 col = tuple(int(c * a_ + bc * (1 - a_)) for c, bc in zip((210, 215, 230), BG_BOT))
                 ImageDraw.Draw(img).text(((W - dw) / 2, H - 190), disclaimer, font=df, fill=col)
-        yield img.tobytes()
+        return img
+
+    frozen = {}  # the outgoing shot of each transition, held on its last frame
+    direction = 1
+    for fi in range(n):
+        t = fi / FPS
+        si = next(i for i, (a, b) in enumerate(bounds) if t < b) if t < total else last
+        lt = t - bounds[si][0]
+        tr = trans[si]
+        if tr and lt < TRANSITION:
+            if si not in frozen:
+                frozen[si] = compose(bounds[si][0] - 1 / FPS, si - 1, fi)
+                direction = -direction
+            cur = compose(t, si, fi)
+            u = lt / TRANSITION
+            if tr == "whip":
+                img = fx.whip(frozen[si], cur, u, direction, top=BAR_Y + 20)
+            else:
+                img = fx.TRANSITIONS[tr](frozen[si], cur, u)
+        else:
+            img = compose(t, si, fi)
+        dx = dy = 0
+        for at, amp in impacts:
+            ox, oy = fx.shake(t - at, amp, seed=int(at * 10))
+            dx, dy = dx + ox, dy + oy
+        if dx or dy:
+            img = ImageChops.offset(img, dx, dy)
+        yield fx.vignette(img).tobytes()

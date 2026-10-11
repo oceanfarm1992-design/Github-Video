@@ -114,6 +114,30 @@ class Tests(unittest.TestCase):
         words, fnt, lines, size, lh = motion.text_layout("x" * 60 + " ok")
         self.assertLessEqual(max(fnt.getlength(w) for w in words), motion.W - 2 * motion.MARGIN)
 
+    def test_emphasis_words(self):
+        for w in ("1.7k", "owner/repo", "GITHUB", "10"):
+            self.assertTrue(motion.is_emphasis(w), w)
+        for w in ("tool", "A", "Meet"):
+            self.assertFalse(motion.is_emphasis(w), w)
+
+    def test_kinetic_text_rises_in_then_settles(self):
+        from PIL import Image
+        bg = (20, 20, 30)
+        drawn = lambda lt: sum(1 for p in _draw(lt).getdata() if p != bg)
+
+        def _draw(lt):
+            img = Image.new("RGB", (motion.W, 400), bg)
+            motion.draw_kinetic_text(img, "Meet answer-me-with-html today", 100, lt, -1, 0.0)
+            return img
+        self.assertEqual(drawn(0.0), 0)  # nothing before the first word starts rising
+        self.assertLess(drawn(0.1), drawn(1.0))  # words are still masked mid-entrance
+        self.assertEqual(drawn(1.0), drawn(2.0))  # settled
+
+    def test_spoken_word_pops_then_returns(self):
+        self.assertEqual(motion.pop(-0.1), 0.0)
+        self.assertAlmostEqual(motion.pop(0.09), 1.0)
+        self.assertLess(motion.pop(0.6), 0.02)
+
     def test_template_hook_is_a_question_and_claims_free_only_with_license(self):
         row = {"title": "a/b", "source": "github", "raw": json.dumps({"topics": ["llm"], "license": "MIT"})}
         hook, beats = generate.template_script(row, [{"text": "a/b has 1k stars on GitHub."}])

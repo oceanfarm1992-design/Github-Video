@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import browser, config, db, motion, music
+from . import browser, config, db, motion, music, sfx
 from .http import request
 
 log = logging.getLogger("render")
@@ -31,6 +31,19 @@ DISCLAIMER = os.environ.get("DISCLAIMER_TEXT", "For educational purposes only")
 
 
 MUSIC_VOLUME = os.environ.get("MUSIC_VOLUME", "0.22")  # music level before ducking (1.0 = full)
+
+
+SFX_VOLUME = float(os.environ.get("SFX_VOLUME", "0.6") or 0.6)
+
+
+def mix_sfx(audio, track, total, dest):
+    """Lays the sound-effects track over the voice + music."""
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(audio), "-i", str(track), "-filter_complex",
+           f"[1:a]aresample=44100,volume={SFX_VOLUME}[s];[0:a]aresample=44100[v];"
+           "[v][s]amix=inputs=2:duration=first:normalize=0[out]", "-map", "[out]",
+           "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "128k", str(dest)]
+    subprocess.run(cmd, check=True, timeout=120)
+    return dest
 
 
 def mix_music(voice, track, total, dest):
@@ -339,19 +352,31 @@ def render(content, topic=None):
         except Exception as e:  # music is a nice-to-have; never lose the video over it
             log.warning("background music skipped: %s", e)
 
-    # 2) animated frames piped straight into the encoder (fade in/out to black, audio fades too)
+    # 2) lay out the video (fills the sound cues), add the sound design, then pipe the frames into the encoder
+    events = []
+    gen = motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT"), page, page_url,
+                        scene_pages=scene_pages, scene_labels=scene_labels, scene_focus=scene_focus,
+                        disclaimer=DISCLAIMER if is_sites else None, events=events)
+    first = next(gen)
+    if audio and events and os.environ.get("SFX", "1") != "0":
+        try:
+            track = sfx.track(events, total, out / "audio" / f"{h}.sfx.wav")
+            audio = mix_sfx(audio, track, total, out / "audio" / f"{h}.sfxmix.m4a")
+        except Exception as e:  # sound effects are a nice-to-have; never lose the video over them
+            log.warning("sound effects skipped: %s", e)
+    # fade in/out to black; audio normalised to -14 LUFS (the level Reels, Shorts and TikTok play at)
     fade = f"fade=t=in:st=0:d=0.4,fade=t=out:st={total - 0.5:.3f}:d=0.5,format=yuv420p"
+    afilter = f"loudnorm=I=-14:TP=-1.5:LRA=11,aresample=44100,afade=t=out:st={total - 0.5:.3f}:d=0.5"
     enc = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
            "-r", str(motion.FPS), "-i", "-"]
     enc += ["-i", str(audio)] if audio else ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
-    enc += ["-t", f"{total:.3f}", "-vf", fade, "-af", f"afade=t=out:st={total - 0.5:.3f}:d=0.5",
+    enc += ["-t", f"{total:.3f}", "-vf", fade, "-af", afilter if audio else "anull",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
             "-movflags", "+faststart", str(mp4)]
     proc = subprocess.Popen(enc, stdin=subprocess.PIPE)
     try:
-        for raw in motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT"), page, page_url,
-                                 scene_pages=scene_pages, scene_labels=scene_labels, scene_focus=scene_focus,
-                                 disclaimer=DISCLAIMER if is_sites else None):
+        proc.stdin.write(first)
+        for raw in gen:
             proc.stdin.write(raw)
         proc.stdin.close()
         if proc.wait(timeout=600) != 0:
