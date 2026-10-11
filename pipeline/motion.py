@@ -134,13 +134,13 @@ def word_colour(word, i, active):
     return COL_NEXT
 
 
-COUNT_LEAD = 0.7  # s a number spends counting up before it is spoken
+COUNT_TIME = 0.9  # s a number takes to count up to its value
 
 
-def draw_kinetic_text(img, text, ty, lt, active, active_since, alpha=1.0, word_times=None):
+def draw_kinetic_text(img, text, ty, lt, active, active_since, alpha=1.0, count=False):
     """Draws the scene text at y=ty, `lt` seconds into the scene. Each word rises into place through
-    its own line box (masked reveal), staggered; the word being spoken pops slightly. With word_times,
-    numbers count up and land on their real value as they are spoken."""
+    its own line box (masked reveal), staggered; the word being spoken pops slightly. With count,
+    numbers count up to their real value while they rise in, well before they are spoken."""
     words, fnt, lines, size, lh = text_layout(text)
     space = fnt.getlength(" ")
     stagger = min(STAGGER, STAGGER_TOTAL / max(1, len(words)))
@@ -153,8 +153,8 @@ def draw_kinetic_text(img, text, ty, lt, active, active_since, alpha=1.0, word_t
                 scale = 1 + POP * pop(lt - active_since) if i == active else 1.0
                 wsize = max(8, round(size * scale))
                 shown = words[i]
-                if word_times and fx.NUM_RE.match(shown):
-                    k = (lt - (word_times[i] - COUNT_LEAD)) / COUNT_LEAD
+                if count and fx.NUM_RE.match(shown):  # counts up to its real value as it rises in
+                    k = (lt - i * stagger) / COUNT_TIME
                     shown = fx.count_text(shown, ease_out(k)) if k < 1 else shown
                 spr = word_sprite(shown, wsize, word_colour(words[i], i, active))
                 dy = int((1 - e) * lh * 0.8)  # rises from below; the part under the line box stays hidden
@@ -457,7 +457,7 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         active = sum(1 for s_ in starts[si] if lt >= s_) - 1 if lt >= starts[si][0] else -1
         fade_out = max(0.0, min(1.0, 1 - ease_in_out((lt - (b - a - 0.25)) / 0.25)))
         draw_kinetic_text(img, text, ty, lt, active, starts[si][active] if active >= 0 else 0.0, fade_out,
-                          word_times=starts[si])
+                          count=True)
         if disclaimer and t < 2.4:  # small on-screen note for the first ~2 s, not spoken
             a_ = 1 - ease_in_out((t - 1.8) / 0.6)
             if a_ > 0:

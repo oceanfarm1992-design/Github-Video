@@ -36,6 +36,24 @@ MUSIC_VOLUME = os.environ.get("MUSIC_VOLUME", "0.22")  # music level before duck
 SFX_VOLUME = float(os.environ.get("SFX_VOLUME", "0.6") or 0.6)
 
 
+LOUDNESS = "I=-14:TP=-1.5:LRA=11"  # the level Reels, Shorts and TikTok play at
+
+
+def loudnorm(audio):
+    """Two-pass loudness normalisation: measure the mix, then return a linear loudnorm filter that lands
+    on -14 LUFS (one pass undershoots on short clips). Falls back to the one-pass filter."""
+    try:
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(audio), "-af",
+                            f"loudnorm={LOUDNESS}:print_format=json", "-f", "null", "-"],
+                           capture_output=True, text=True, timeout=120)
+        m = json.loads(r.stderr[r.stderr.rindex("{"):r.stderr.rindex("}") + 1])
+        return (f"loudnorm={LOUDNESS}:linear=true:measured_I={m['input_i']}:measured_TP={m['input_tp']}:"
+                f"measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}")
+    except Exception as e:
+        log.warning("loudness measurement failed (%s); using one-pass normalisation", e)
+        return f"loudnorm={LOUDNESS}"
+
+
 def mix_sfx(audio, track, total, dest):
     """Lays the sound-effects track over the voice + music."""
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(audio), "-i", str(track), "-filter_complex",
@@ -366,11 +384,11 @@ def render(content, topic=None):
             log.warning("sound effects skipped: %s", e)
     # fade in/out to black; audio normalised to -14 LUFS (the level Reels, Shorts and TikTok play at)
     fade = f"fade=t=in:st=0:d=0.4,fade=t=out:st={total - 0.5:.3f}:d=0.5,format=yuv420p"
-    afilter = f"loudnorm=I=-14:TP=-1.5:LRA=11,aresample=44100,afade=t=out:st={total - 0.5:.3f}:d=0.5"
+    afilter = f"{loudnorm(audio) + ',alimiter=limit=0.84:level=false' if audio else 'anull'},aresample=44100,afade=t=out:st={total - 0.5:.3f}:d=0.5"
     enc = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
            "-r", str(motion.FPS), "-i", "-"]
     enc += ["-i", str(audio)] if audio else ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
-    enc += ["-t", f"{total:.3f}", "-vf", fade, "-af", afilter if audio else "anull",
+    enc += ["-t", f"{total:.3f}", "-vf", fade, "-af", afilter,
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
             "-movflags", "+faststart", str(mp4)]
     proc = subprocess.Popen(enc, stdin=subprocess.PIPE)
