@@ -46,7 +46,7 @@ class Backdrop:
     CELL = 90
     GRID_SPEED = 0.6  # px per frame
 
-    def __init__(self, top=(14, 16, 28), bottom=(44, 48, 72), seed=7):
+    def __init__(self, top=(14, 16, 28), bottom=(44, 48, 72), seed=7, accent=ACCENT):
         rng = np.random.default_rng(seed)
         c = self.CELL
         h, w = H + c, W + c
@@ -57,18 +57,20 @@ class Backdrop:
         lines[::c, :] = 7
         lines[:, ::c] = 7
         lines[::c, ::c] = 22  # brighter grid crossings
-        img += lines[:, :, None] * np.array([0.8, 0.9, 1.2], np.float32)
+        tint = np.array(accent, np.float32) / max(accent)  # grid in the series colour
+        img += lines[:, :, None] * (0.5 + 0.7 * tint)
         img += rng.normal(0, 2.4, (h, w, 1)).astype(np.float32)  # film grain (background only)
         self.big = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
         self.dots = [(rng.uniform(0, W), rng.uniform(0, H), rng.uniform(0.25, 1.0)) for _ in range(22)]
         self.sprites = {}
+        self.accent = tuple(accent)
 
     def _sprite(self, depth):
         key = round(depth, 1)
         if key not in self.sprites:
             r = int(4 + 9 * key)
             spr = Image.new("RGBA", (r * 6, r * 6), (0, 0, 0, 0))
-            ImageDraw.Draw(spr).ellipse([r * 2, r * 2, r * 4, r * 4], fill=ACCENT + (int(40 + 70 * key),))
+            ImageDraw.Draw(spr).ellipse([r * 2, r * 2, r * 4, r * 4], fill=self.accent + (int(40 + 70 * key),))
             self.sprites[key] = spr.filter(ImageFilter.GaussianBlur(r * 0.9))
         return self.sprites[key]
 
@@ -198,7 +200,7 @@ def whip(prev, cur, u, direction=1, top=0):
     return Image.fromarray(out)
 
 
-def circle_wipe(prev, cur, u, center=None):
+def circle_wipe(prev, cur, u, center=None, colour=GOLD):
     """The new shot opens from a growing circle with a thin light ring on its edge."""
     k = ease_in_out(u)
     cx, cy = center or (W / 2, H / 2)
@@ -207,11 +209,11 @@ def circle_wipe(prev, cur, u, center=None):
     ImageDraw.Draw(mask).ellipse([cx - r, cy - r, cx + r, cy + r], fill=255)
     out = Image.composite(cur, prev, mask)
     if 0 < k < 1:
-        ImageDraw.Draw(out).ellipse([cx - r, cy - r, cx + r, cy + r], outline=GOLD, width=6)
+        ImageDraw.Draw(out).ellipse([cx - r, cy - r, cx + r, cy + r], outline=colour, width=6)
     return out
 
 
-def panel_wipe(prev, cur, u, skew=520):
+def panel_wipe(prev, cur, u, skew=520, colour=GOLD):
     """A diagonal panel sweeps across left to right, revealing the new shot behind its bright edge."""
     k = ease_in_out(u)
     p = k * (W + skew) - skew  # x of the edge at the bottom; the top leads by `skew`
@@ -219,7 +221,7 @@ def panel_wipe(prev, cur, u, skew=520):
     ImageDraw.Draw(mask).polygon([(0, 0), (p + skew, 0), (p, H), (0, H)], fill=255)
     out = Image.composite(cur, prev, mask)
     if 0 < k < 1:
-        ImageDraw.Draw(out).line([(p + skew, 0), (p, H)], fill=GOLD, width=8)
+        ImageDraw.Draw(out).line([(p + skew, 0), (p, H)], fill=colour, width=8)
     return out
 
 

@@ -117,7 +117,7 @@ def publish(service, c, video_url):
         meta = {"pinterest": {"boardServiceId": board_id(ch), "title": title,
                               **({"url": single_link(c)} if single_link(c) else {})}}
     base = {"channelId": ch["id"], "text": text, "schedulingType": "automatic",
-            "assets": [{"video": {"url": video_url, "metadata": {"thumbnailOffset": 1500}}}], "metadata": meta}
+            "assets": [{"video": {"url": video_url, "metadata": {"thumbnailOffset": 400}}}], "metadata": meta}
     res = _create(base)
     if service == "linkedin" and links and "first comment" in (res.get("message") or "").lower():
         # Buffer's free plan has no first comment: the link goes in the post text instead

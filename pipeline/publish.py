@@ -9,7 +9,7 @@ import os
 import time
 import urllib.parse
 
-from . import buffer, db, seo, zernio
+from . import buffer, config, db, generate, seo, zernio
 from .http import request
 
 log = logging.getLogger("publish")
@@ -82,14 +82,45 @@ def youtube_upload(token, c, links=None):
     return vid, f"https://youtube.com/shorts/{vid}"
 
 
+def youtube_first_comment(token, video_id, c, links):
+    """Posts the approved link(s) as the channel's first comment (the API cannot pin it; pin it in
+    YouTube Studio if wanted). Needs the youtube.force-ssl scope; failures only warn."""
+    if not config.YT_FIRST_COMMENT or not links:
+        return
+    question = generate.caption_question({"source": c.get("tsource") or ""})
+    text = "\n\n".join(p for p in (links, question) if p)[:9000]
+    body = {"snippet": {"videoId": video_id, "topLevelComment": {"snippet": {"textOriginal": text}}}}
+    try:
+        request("https://www.googleapis.com/youtube/v3/commentThreads?part=snippet", method="POST",
+                data=json.dumps(body).encode(), attempts=2,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    except RuntimeError as e:
+        log.warning("YouTube first comment skipped: %s", e)
+
+
 # ------------------------------------------------- public hosting (for Instagram)
 def public_video_url(c):
     """Host the mp4 as a GitHub release asset (public repo => public URL). Needs Actions env."""
+    return public_asset_url(c["video_path"], "video/mp4")
+
+
+def public_cover_url(c):
+    """The cover image (the video's hook frame) as a public URL, or None."""
+    try:
+        return public_asset_url(os.path.splitext(c["video_path"])[0] + ".jpg", "image/jpeg")
+    except Exception as e:
+        log.warning("cover upload failed: %s", e)
+        return None
+
+
+def public_asset_url(path, content_type):
+    """Host a file as a GitHub release asset (public repo => public URL). Needs Actions env. A file that
+    is no longer on disk (a retry on a fresh runner) is found among the assets uploaded earlier."""
     repo, token = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_TOKEN")
     if not repo or not token:
         return None
     h = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
-    name = os.path.basename(c["video_path"])
+    name = os.path.basename(path)
     api = f"https://api.github.com/repos/{repo}/releases"
     try:
         _, _, r = request(f"{api}/tags/videos", headers=h)
@@ -100,9 +131,11 @@ def public_video_url(c):
                                            "body": "Public hosting for rendered videos."}).encode())
         rel = json.loads(r)
     if not any(a["name"] == name for a in rel.get("assets", [])):
+        if not os.path.exists(path):
+            return None
         request(f"https://uploads.github.com/repos/{repo}/releases/{rel['id']}/assets?name={name}",
-                method="POST", data=open(c["video_path"], "rb").read(), attempts=2,
-                headers={**h, "Content-Type": "video/mp4"})
+                method="POST", data=open(path, "rb").read(), attempts=2,
+                headers={**h, "Content-Type": content_type})
     return f"https://github.com/{repo}/releases/download/videos/{name}"
 
 
@@ -285,12 +318,16 @@ def run(conn):
                     log.info("%s already has %s on %s; recording, not re-posting", c["title"], post_id, name)
                 elif name == "youtube":
                     tok = youtube_token()
-                    post_id, url = youtube_upload(tok, c, link_block((c.get("_cta") or {}).get("response")))
+                    links = link_block((c.get("_cta") or {}).get("response"))
+                    post_id, url = youtube_upload(tok, c, links)
                     seo.add_to_playlist(conn, tok, c, post_id)
+                    youtube_first_comment(tok, post_id, c, links)
                 else:
                     video_url = video_url or public_video_url(c)
                     if not video_url:
                         raise RuntimeError("no public video URL (run inside GitHub Actions)")
+                    if "_cover_url" not in c:
+                        c["_cover_url"] = public_cover_url(c)
                     post_id, url = fn(c, video_url)
                 conn.execute(
                     "INSERT INTO posts (platform,post_id,content_id,published_at,status,url) VALUES (?,?,?,?,?,?)",

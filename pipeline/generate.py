@@ -130,13 +130,8 @@ def _day_start():
 
 
 def kind(source):
-    if source == "github":
-        return "github"
-    if source.startswith("tools:"):
-        return "tools"
-    if source.startswith("promo:"):
-        return "promo"
-    return "sites" if source.startswith("sites:") else "news"
+    from .theme import kind as series
+    return series(source)
 
 
 def videos_today(conn, which=None):
@@ -146,11 +141,12 @@ def videos_today(conn, which=None):
     return sum(1 for r in rows if which is None or kind(r["source"]) == which)
 
 
-def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0, sites_room=0, promo_room=0):
+def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0, sites_room=0, promo_room=0, ranking_room=0):
     """Top-scoring rows per category, within each category's remaining daily room and score bar."""
     out = []
-    room = {"github": gh_room, "news": news_room, "tools": tools_room, "sites": sites_room, "promo": promo_room}
-    bar = {"github": min_gh, "news": min_news, "tools": 0, "sites": 0, "promo": 0}
+    room = {"github": gh_room, "news": news_room, "tools": tools_room, "sites": sites_room, "promo": promo_room,
+            "ranking": ranking_room, "recap": 0}
+    bar = {"github": min_gh, "news": min_news, "tools": 0, "sites": 0, "promo": 0, "ranking": 0, "recap": 0}
     for r in sorted(rows, key=lambda r: -r["score"]):
         k = kind(r["source"])
         if room[k] > 0 and r["score"] >= bar[k]:
@@ -165,7 +161,9 @@ ROTATION = ("github", "tools", "github", "sites", "promo")  # one video per slot
 def by_rotation(rows, done_today):
     """Orders picked rows so the day's slots alternate series: the next due kind first, then the rest."""
     order = ROTATION[done_today % len(ROTATION):] + ROTATION
-    return sorted(rows, key=lambda r: order.index(kind(r["source"])) if kind(r["source"]) in order else 99)
+    # the weekly ranking exists only on its day: it takes that day's next slot
+    return sorted(rows, key=lambda r: -1 if kind(r["source"]) == "ranking" else
+                  order.index(kind(r["source"])) if kind(r["source"]) in order else 99)
 
 
 def hashtags(row):
@@ -178,6 +176,8 @@ def hashtags(row):
         tags = ["#UsefulWebsites", "#WebsitesYouShouldKnow", "#Websites", "#TechTips", "#Internet"]
     elif k == "promo":
         tags = ["#PDFTools", "#PDF", "#Privacy", "#Productivity", "#FreeTools"]
+    elif k == "ranking":
+        tags = ["#GitHub", "#OpenSource", "#Top5", "#Programming", "#TechNews"]
     elif k == "github":
         tags = ["#OpenSource", "#GitHub", "#AI"]
         for t in raw.get("topics", [])[:6]:
@@ -218,6 +218,19 @@ def sites_script(row):
     return hook, beats, links
 
 
+def ranking_script(row):
+    """Countdown script for the weekly ranking: #N -> #1, each with its real star count."""
+    raw = json.loads(row["raw"] or "{}")
+    items = raw.get("tools", [])
+    n = len(items)
+    hook = f"Top {n} new GitHub repos this week, ranked by stars."
+    beats = [f"Number {it['rank']}: {it['name'].split('/')[-1]}. {it['description']} {it['stars']:,} stars."
+             for it in items]
+    links = "Here are the links:\n" + "\n".join(f"{it['rank']}. {it['name']} - {it['url']}"
+                                                for it in sorted(items, key=lambda x: x["rank"]))
+    return hook, beats, links
+
+
 def series_outro(cta, response, legal_note=False):
     """Spoken outro that matches what the DM actually contains: one link, or all N links of a list
     (counted from the links text, not from the number of narrated lines)."""
@@ -235,6 +248,8 @@ def caption_question(row):
         return "Which one did you not know about?"
     if k == "promo":
         return "Which PDF tool should I show next?"
+    if k == "ranking":
+        return "Which one is your #1?"
     return "Would you use this?"
 
 
@@ -259,7 +274,8 @@ def run(conn):
                 config.GENERATE_SCORE, min(config.GENERATE_SCORE, config.GENERATE_SCORE_NEWS),
                 config.DAILY_TOOLS_VIDEOS - videos_today(conn, "tools"),
                 config.DAILY_SITES_VIDEOS - videos_today(conn, "sites"),
-                config.DAILY_PROMO_VIDEOS - videos_today(conn, "promo"))
+                config.DAILY_PROMO_VIDEOS - videos_today(conn, "promo"),
+                1 - videos_today(conn, "ranking"))
     rows = by_rotation(rows, videos_today(conn))[:room]
     n = 0
     for row in rows:
@@ -273,6 +289,10 @@ def run(conn):
             elif kind(row["source"]) == "promo":  # the owner's own site: its own page text, no LLM rewrite
                 hook, beats, response = promo_script(row)
                 cta = "TOOL"
+                outro = series_outro(cta, response)
+            elif kind(row["source"]) == "ranking":  # GitHub's own ranking data, no LLM rewrite
+                hook, beats, response = ranking_script(row)
+                cta = "GITHUB"
                 outro = series_outro(cta, response)
             elif kind(row["source"]) == "sites":  # same: each site's own description, no LLM rewrite
                 hook, beats, response = sites_script(row)

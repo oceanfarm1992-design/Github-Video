@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS llm_cache (key TEXT PRIMARY KEY, response TEXT, cost 
 CREATE TABLE IF NOT EXISTS spend (day TEXT, calls INTEGER, usd REAL, PRIMARY KEY(day));
 CREATE TABLE IF NOT EXISTS weights (name TEXT PRIMARY KEY, value REAL);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS star_snapshots (repo TEXT, t REAL, stars INTEGER, PRIMARY KEY (repo, t));
 """
 
 
@@ -126,4 +127,5 @@ def prune(conn, http_days=7):
     cutoff = time.time() - http_days * 86400
     n = conn.execute("DELETE FROM http_cache WHERE fetched_at < ?", (cutoff,)).rowcount
     conn.execute("DELETE FROM kv WHERE key LIKE 'checked:%' AND CAST(value AS REAL) < ?", (time.time() - 14 * 86400,))
+    conn.execute("DELETE FROM star_snapshots WHERE t < ?", (time.time() - 45 * 86400,))
     return n

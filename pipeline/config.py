@@ -32,6 +32,11 @@ SITES_PER_VIDEO = _i("SITES_PER_VIDEO", 1)  # 1 = one site per video, explored s
 DAILY_TOOLS_VIDEOS = _i("DAILY_TOOLS_VIDEOS", 1)   # "N AI tools for <category>" videos
 DAILY_PROMO_VIDEOS = _i("DAILY_PROMO_VIDEOS", 1)   # one Privacy PDF Tools tool per day
 TOOLS_PER_VIDEO = _i("TOOLS_PER_VIDEO", 10)
+# weekly formats (0 = Monday ... 6 = Sunday; -1 turns the format off)
+RANKING_WEEKDAY = _i("RANKING_WEEKDAY", 6)  # "Top 5 new GitHub repos this week", ranked by stars
+RANKING_SIZE = _i("RANKING_SIZE", 5)
+RECAP_WEEKDAY = _i("RECAP_WEEKDAY", 5)      # 30-second recap of the week's videos
+YT_FIRST_COMMENT = _i("YT_FIRST_COMMENT", 1)  # post the link as the first YouTube comment
 # at most this many videos per produce run; two daily produce slots catch up if GitHub drops one schedule
 MAX_VIDEOS_PER_RUN = _i("MAX_VIDEOS_PER_RUN", 1)
 GENERATE_SCORE_NEWS = _i("GENERATE_SCORE_NEWS", 65)

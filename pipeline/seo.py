@@ -36,6 +36,17 @@ SERIES = {
         "about": "Privacy PDF Tools: PDF tools that keep your files private. One tool explained every day.",
         "playlist": "Privacy PDF Tools Tutorials",
     },
+    "ranking": {
+        "keywords": ["GitHub trending", "top GitHub repos", "new GitHub projects", "open source", "GitHub",
+                     "programming", "developer tools"],
+        "about": "The top new GitHub repos of the week, ranked by stars. A new top 5 every week.",
+        "playlist": "Weekly Top 5 GitHub Repos",
+    },
+    "recap": {
+        "keywords": ["AI tools", "open source", "GitHub", "useful websites", "tech tips"],
+        "about": "Everything from this week's videos in 30 seconds.",
+        "playlist": "Weekly Recaps",
+    },
     "news": {
         "keywords": ["AI news", "artificial intelligence", "tech news"],
         "about": "AI and open-source news in under a minute.",
@@ -107,6 +118,11 @@ def title(c):
         opts = [f"{n} AI Tools for {phrase} You Should Know", f"{n} AI Tools for {phrase}", hook]
     elif k == "sites":
         opts = [f"Websites That Feel Illegal to Know - Part {raw.get('part', 1)}: {name}", hook]
+    elif k == "ranking":
+        n = len(raw.get("tools") or [])
+        opts = [f"Top {n} New GitHub Repos This Week (Ranked by Stars)", f"Top {n} New GitHub Repos This Week"]
+    elif k == "recap":
+        opts = ["This Week in 30 Seconds: AI Tools, GitHub Finds and Websites", "This Week in 30 Seconds"]
     elif k == "promo":
         private = any("never uploaded" in b.lower() for b in _beats(c))  # the site's own privacy line
         opts = [f"{hook} | {name} Online"]
@@ -185,6 +201,8 @@ def youtube_tags(c, budget=450):
         cand += [f"{name} website", f"websites that feel illegal to know part {raw.get('part', 1)}"]
     elif k == "promo":
         cand += [f"{name} online", f"{name} free", f"how to {name.lower()}"]
+    elif k == "ranking":
+        cand += [t["name"].split("/")[-1] for t in raw.get("tools", [])]
     cand += SERIES.get(k, SERIES["news"])["keywords"]
     cand += [h.lstrip("#") for h in hashtags(c, 10)]
     out, seen, used = [], set(), 0

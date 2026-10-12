@@ -1,6 +1,7 @@
 """PREVIEW: render a sample video (no state change, no publishing) to check voice, look and watermark.
 
-`python -m pipeline preview` renders the fixed GitHub sample. With GENERATE_SOURCES=tools (workflow input
+`python -m pipeline preview` renders the fixed GitHub sample; GENERATE_SOURCES=tools | sites | promo |
+ranking | recap renders that series instead (recap from this week's real published videos). With GENERATE_SOURCES=tools (workflow input
 `sources: tools`) it builds a real AI-tools video for PREVIEW_TOOLS_CATEGORY (default: video) in an
 in-memory database, so nothing is queued or published.
 """
@@ -9,7 +10,7 @@ import os
 import shutil
 from pathlib import Path
 
-from . import config, db, generate, promo, render, sites, tools
+from . import config, db, generate, promo, ranking, recap, render, sites, tools
 
 SAMPLE = {
     "hook": "Do you want a free, open-source tool to build with language models?",
@@ -40,6 +41,23 @@ def run(conn=None):
         hook, beats, links = generate.sites_script(row)
         script = {"hook": hook, "beats": beats, "outro": generate.series_outro("LINK", links, legal_note=True)}
         path = render.render({"script": json.dumps(script), "title": row["title"]}, row)
+    elif os.environ.get("GENERATE_SOURCES", "").strip() == "ranking":
+        mem = db.connect(":memory:")
+        tid = ranking.build(mem)
+        if not tid:
+            return {"error": "not enough ranked repos"}
+        row = mem.execute("SELECT * FROM topics WHERE id=?", (tid,)).fetchone()
+        hook, beats, links = generate.ranking_script(row)
+        script = {"hook": hook, "beats": beats, "outro": generate.series_outro("GITHUB", links)}
+        path = render.render({"script": json.dumps(script), "title": row["title"]}, row)
+    elif os.environ.get("GENERATE_SOURCES", "").strip() == "recap":
+        mem = db.connect(":memory:")
+        tid = recap.build(mem, recap.collect(conn)) if conn else None  # this week's real published videos
+        if not tid:
+            return {"error": "not enough published videos this week"}
+        row = mem.execute("SELECT * FROM topics WHERE id=?", (tid,)).fetchone()
+        content = dict(mem.execute("SELECT * FROM contents WHERE topic_id=?", (tid,)).fetchone())
+        path = render.render(content, row)
     elif os.environ.get("GENERATE_SOURCES", "").strip() == "tools":
         mem = db.connect(":memory:")
         tid = tools.build(mem, os.environ.get("PREVIEW_TOOLS_CATEGORY", "video"))

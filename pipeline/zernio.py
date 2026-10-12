@@ -89,6 +89,8 @@ def publish_reel(platform, c, video_url):
     """Returns (platform_post_id, url). Raises on failure."""
     acct = account(platform)
     data = {"shareToFeed": True} if platform == "instagram" else {"contentType": "reel", "title": c["title"][:100]}
+    if platform == "instagram" and c.get("_cover_url"):  # the hook frame as the Reel cover in the grid
+        data["instagramThumbnail"] = c["_cover_url"]
     body = {
         "content": social_caption(c),
         "mediaItems": [{"type": "video", "url": video_url}],

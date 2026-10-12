@@ -127,18 +127,18 @@ def word_sprite(word, size, col):
     return img
 
 
-def word_colour(word, i, active):
+def word_colour(word, i, active, theme=None):
     if i == active:
-        return COL_NOW
+        return theme.now if theme else COL_NOW
     if i < active:
-        return COL_EMPH if is_emphasis(word) else COL_DONE
+        return (theme.emph if theme else COL_EMPH) if is_emphasis(word) else COL_DONE
     return COL_NEXT
 
 
 COUNT_TIME = 0.9  # s a number takes to count up to its value
 
 
-def draw_kinetic_text(img, text, ty, lt, active, active_since, alpha=1.0, count=False):
+def draw_kinetic_text(img, text, ty, lt, active, active_since, alpha=1.0, count=False, theme=None):
     """Draws the scene text at y=ty, `lt` seconds into the scene. Each word rises into place through
     its own line box (masked reveal), staggered; the word being spoken pops slightly. With count,
     numbers count up to their real value while they rise in, well before they are spoken."""
@@ -157,7 +157,7 @@ def draw_kinetic_text(img, text, ty, lt, active, active_since, alpha=1.0, count=
                 if count and fx.countable(shown):  # counts up to its real value as it rises in
                     k = (lt - i * stagger) / COUNT_TIME
                     shown = fx.count_text(shown, ease_out(k)) if k < 1 else shown
-                spr = word_sprite(shown, wsize, word_colour(words[i], i, active))
+                spr = word_sprite(shown, wsize, word_colour(words[i], i, active, theme))
                 dy = int((1 - e) * lh * 0.8)  # rises from below; the part under the line box stays hidden
                 if dy < spr.height:
                     if dy:
@@ -252,6 +252,7 @@ class Panel:
         d.text((166, 20), label, font=f, fill=(201, 209, 217))
         self.mask = Image.new("L", (CARD_W, height), 0)
         ImageDraw.Draw(self.mask).rounded_rectangle([0, 0, CARD_W, height], 26, fill=255)
+        self.edge = fx.GOLD  # spotlight outline colour (the series theme sets it)
 
     def frame(self, progress, span_seconds):
         dist = min(self.page.height - self.view_h, self.MAX_SPEED * span_seconds)
@@ -278,7 +279,7 @@ class Panel:
             shade = Image.new("L", view.size, int(150 * strength))
             ImageDraw.Draw(shade).rounded_rectangle(r, 18, fill=0)
             view = Image.composite(Image.new("RGB", view.size, (0, 0, 0)), view, shade)
-            view = fx.draw_on_outline(view, r, strength)  # the outline draws itself as the camera arrives
+            view = fx.draw_on_outline(view, r, strength, colour=self.edge)  # draws itself as the camera arrives
         img = self.chrome.copy()
         img.paste(view, (0, self.BAR))
         return img
@@ -296,36 +297,67 @@ class Panel:
 
 TRANSITION = 0.4  # s
 BAR_Y = 120       # progress bar; rows above BAR_Y + 20 stay still during a whip-pan
+PANEL_KINDS = ("scroll", "stats", "terminal", "compare", "podium")  # visuals drawn in the browser-window slot
 
 
-def plan_transitions(kinds, page_of):
+def plan_transitions(kinds, page_of, cta=None):
     """Transition into each scene: None when the visual stays (the camera or the text carries the change),
-    a circle wipe into the final call to action, otherwise whip-pans alternating with panel wipes."""
-    out, last, n = [None] * len(kinds), len(kinds) - 1, 0
+    a circle wipe into the call to action (`cta`, default the last scene), a panel wipe into the end card,
+    otherwise whip-pans alternating with panel wipes."""
+    cta = len(kinds) - 1 if cta is None else cta
+    out, n = [None] * len(kinds), 0
     for i in range(1, len(kinds)):
         if kinds[i] == kinds[i - 1] and page_of[i] == page_of[i - 1]:
             continue
-        if i == last:
+        if i == cta:
             out[i] = "circle"
+        elif kinds[i] == "end":
+            out[i] = "panel"
         else:
             out[i] = "whip" if n % 2 == 0 or kinds[i - 1] != "scroll" else "panel"
             n += 1
     return out
 
 
+def _pad(lst, n, front, back):
+    lst = list(lst) if lst else [None] * n
+    return [None] * front + lst + [None] * back
+
+
 def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=None, page_url=None,
-           scene_pages=None, scene_labels=None, scene_focus=None, disclaimer=None, events=None):
+           scene_pages=None, scene_labels=None, scene_focus=None, disclaimer=None, events=None,
+           theme=None, intro=None, endcard=None, scene_visuals=None, scene_logos=None):
     """scenes: [(text, seconds)]. Yields raw RGB24 bytes, FPS per second.
     scene_pages: per scene (page_path, url) or None -> that scene shows the page in a browser window;
     consecutive scenes on the same page share one continuous scroll. Without it, a single page_path is
     shown on the middle scenes and the preview card on the first and last (GitHub videos).
     scene_labels: per scene short label drawn above the visual (e.g. "#3/10  Runway").
-    events: a list that receives (seconds, sound) cues for the sound design (filled before the first frame)."""
+    scene_visuals: per scene None or a data panel: ("stats", info) | ("terminal", commands) |
+    ("compare", (before, after)) | ("podium", items). scene_logos: per scene a logo image path.
+    intro / endcard: dicts for the hook frame before the first scene and the end card after the last.
+    events: a list that receives (seconds, cue) before the first frame: sounds ("impact", "whoosh",
+    "click") and markers for the music ("cta", "end")."""
+    from . import visuals
+    from .theme import DEFAULT
+    theme = theme or DEFAULT
+    real = len(scenes)
+    if scene_pages is None:
+        scene_pages = [(page_path, page_url) if page_path and (0 < i < real - 1 or not card_path) else None
+                       for i in range(real)]
+    front, back = (1 if intro else 0), (1 if endcard else 0)
+    scenes = ([("", visuals.INTRO)] if intro else []) + list(scenes) + ([("", visuals.ENDCARD)] if endcard else [])
+    scene_pages = _pad(scene_pages, real, front, back)
+    labels = _pad(scene_labels, real, front, back)
+    focus = _pad(scene_focus, real, front, back) if scene_focus else None
+    vis = _pad(scene_visuals, real, front, back)
+    logos = _pad(scene_logos, real, front, back)
+    first_real, cta = front, front + real - 1
     total = sum(d for _, d in scenes)
+    content_t0, content_t1 = (visuals.INTRO if intro else 0.0), total - (visuals.ENDCARD if endcard else 0.0)
     n = round(total * FPS)
     env = envelope(audio_path, n)
     card = Card(card_path) if card_path else None
-    backdrop = fx.Backdrop(BG_TOP, BG_BOT)
+    backdrop = fx.Backdrop(theme.bg_top, theme.bg_bot, accent=theme.accent)
     wm = None
     if watermark:
         f = font(34)
@@ -333,36 +365,53 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         ImageDraw.Draw(wm).text((0, 0), watermark, font=f, fill=(110, 120, 150, 255))
 
     last = len(scenes) - 1
-    if scene_pages is None:
-        scene_pages = [(page_path, page_url) if page_path and (0 < i < last or not card) else None
-                       for i in range(len(scenes))]
-    labels = scene_labels or [None] * len(scenes)
     fallback = "card" if card else "text"
-    kinds = ["scroll" if scene_pages[i] else fallback for i in range(len(scenes))]
+    kinds = []
+    for i in range(len(scenes)):
+        if intro and i == 0:
+            kinds.append("intro")
+        elif endcard and i == last:
+            kinds.append("end")
+        elif vis[i]:
+            kinds.append(vis[i][0])
+        else:
+            kinds.append("scroll" if scene_pages[i] else fallback)
 
     bounds, t0 = [], 0.0
     for text, dur in scenes:
         bounds.append((t0, t0 + dur))
         t0 += dur
 
-    def max_h(kind):
-        hs = [text_height(t) for (t, _), k in zip(scenes, kinds) if k == kind]
+    def max_h(kind_set):
+        hs = [text_height(t) for (t, _), k in zip(scenes, kinds) if k in kind_set and t]
         return max(hs) if hs else 0
 
     if card:
-        y_card = max(260, (H - (card.h + 80 + max_h("card"))) // 2 - 40)
+        y_card = max(260, (H - (card.h + 80 + max_h(("card",)))) // 2 - 40)
     y_panel = 250 if any(labels) else 230
-    panels = {}
-    if "scroll" in kinds:
-        ph = max(700, min(1150, H - y_panel - 60 - max_h("scroll") - 200))
-        for i, k in enumerate(kinds):
-            if k == "scroll" and scene_pages[i][0] not in panels:
-                try:
-                    panels[scene_pages[i][0]] = Panel(scene_pages[i][0], scene_pages[i][1] or "", ph)
-                except Exception:
-                    panels[scene_pages[i][0]] = None
-        kinds = [k if k != "scroll" or panels.get(scene_pages[i][0]) else fallback for i, k in enumerate(kinds)]
-    page_of = [scene_pages[i][0] if kinds[i] == "scroll" else None for i in range(len(scenes))]
+    ph = max(700, min(1150, H - y_panel - 60 - max_h(PANEL_KINDS) - 200))
+    panels, vpanels = {}, {}
+    for i, k in enumerate(kinds):
+        if k == "scroll" and scene_pages[i][0] not in panels:
+            try:
+                panels[scene_pages[i][0]] = Panel(scene_pages[i][0], scene_pages[i][1] or "", ph)
+                panels[scene_pages[i][0]].edge = theme.edge
+            except Exception:
+                panels[scene_pages[i][0]] = None
+        elif k in ("stats", "terminal", "compare", "podium"):
+            data = vis[i][1]
+            try:
+                vpanels[i] = (visuals.StatsPanel(data, theme, ph) if k == "stats" else
+                              visuals.TermPanel(data, theme, ph, "Terminal — install") if k == "terminal" else
+                              visuals.ComparePanel(data[0], data[1], theme, ph) if k == "compare" else
+                              visuals.PodiumPanel(data, theme, ph))
+            except Exception:
+                vpanels[i] = None
+    kinds = [fallback if (k == "scroll" and not panels.get(scene_pages[i][0]))
+             or (k in ("stats", "terminal", "compare", "podium") and not vpanels.get(i)) else k
+             for i, k in enumerate(kinds)]
+    page_of = [scene_pages[i][0] if kinds[i] == "scroll" else (("vis", i) if i in vpanels else None)
+               for i in range(len(scenes))]
     # scroll span per run of consecutive scenes on the same page; entrance animation at each new visual
     span_of, run_start, run_first = [None] * len(scenes), [], []
     for i in range(len(scenes)):
@@ -372,20 +421,25 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
     i = 0
     while i < len(scenes):
         j = i
-        while j + 1 < len(scenes) and page_of[i] and page_of[j + 1] == page_of[i]:
+        while j + 1 < len(scenes) and kinds[i] == "scroll" and page_of[j + 1] == page_of[i]:
             j += 1
         for k in range(i, j + 1):
             span_of[k] = (bounds[i][0], bounds[j][1])
         i = j + 1
     label_font = font(52)
-    starts = [word_starts(t, dur - 0.4) for t, dur in scenes]
-    trans = plan_transitions(kinds, page_of)
+    starts = [word_starts(t, dur - 0.4) if t else [] for t, dur in scenes]
+    trans = plan_transitions(kinds, page_of, cta=cta if real > 1 else None)
+    edge = {"circle": lambda a, b, u: fx.circle_wipe(a, b, u, colour=theme.edge),
+            "panel": lambda a, b, u: fx.panel_wipe(a, b, u, colour=theme.edge)}
 
     def move_time(si):  # guided tour: seconds for the camera to glide to the scene's section
         return min(1.4, (bounds[si][1] - bounds[si][0]) * 0.35)
 
-    # impacts (shake + sound) and the sound cues, all known before the first frame
-    impacts = [(0.05, 7)]
+    def visual_lt(si, t):  # seconds since this visual became fully visible
+        return t - run_start[si] - (TRANSITION if trans[run_first[si]] else 0.0)
+
+    # impacts (shake + sound) and cues, all known before the first frame
+    impacts = [(0.05, 9 if intro else 7)]
     cues = [(0.0, "impact")]
     for si, tr in enumerate(trans):
         if tr:
@@ -394,8 +448,15 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
             impacts.append((a + TRANSITION, 12 if tr == "circle" else 5))
             if tr == "circle":
                 cues.append((a + TRANSITION * 0.85, "impact"))
-        if scene_focus and scene_focus[si] and kinds[si] == "scroll":
+        if focus and focus[si] and kinds[si] == "scroll":
             cues.append((bounds[si][0] + move_time(si), "click"))
+        if kinds[si] == "terminal" and run_first[si] == si:
+            base = bounds[si][0] + (TRANSITION if trans[si] else 0.0)
+            cues += [(base + s, "click") for s in vpanels[si].command_times()]
+    if real > 1:
+        cues.append((bounds[cta][0], "cta"))
+    if endcard:
+        cues.append((bounds[last][0], "end"))
     if events is not None:
         events.extend(sorted(cues))
 
@@ -403,18 +464,27 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         a, b = bounds[si]
         lt, text = t - a, scenes[si][0]
         img = backdrop.frame(fi)
+        if kinds[si] == "intro":  # the hook frame: also the cover, so nothing else on it
+            visuals.draw_intro(img, intro, theme, lt)
+            return img
         if wm:
             img.paste(wm, ((W - wm.width) // 2, H - 120), wm)
         idraw = ImageDraw.Draw(img)
-        bar = MARGIN + int((W - 2 * MARGIN) * (t / total))
-        idraw.rounded_rectangle([MARGIN - 3, BAR_Y - 3, bar + 3, BAR_Y + 15], 9, fill=(40, 70, 120))  # glow
-        idraw.rectangle([MARGIN, BAR_Y, bar, BAR_Y + 12], fill=fx.ACCENT)
+        if kinds[si] == "end":
+            visuals.draw_endcard(img, endcard, theme, lt)
+            return img
+        prog = max(0.0, min(1.0, (t - content_t0) / max(0.1, content_t1 - content_t0)))
+        bar = MARGIN + int((W - 2 * MARGIN) * prog)
+        idraw.rounded_rectangle([MARGIN - 3, BAR_Y - 3, bar + 3, BAR_Y + 15], 9,
+                                fill=tuple(c // 3 for c in theme.accent))  # glow
+        idraw.rectangle([MARGIN, BAR_Y, bar, BAR_Y + 12], fill=theme.accent)
         whipped = trans[run_first[si]] is not None  # the transition is this visual's entrance
         since = t - run_start[si]
         e = 1.0 if whipped else ease_out(since / 0.6)      # entrance: rise + fade in
+        label_x = MARGIN + (visuals.BADGE + 30 if logos[si] else 0)
         if labels[si]:  # e.g. "#3/10  Runway": which item we are on, above the visual
-            idraw.text((MARGIN, 150 + int(30 * (1 - e))), labels[si], font=label_font,
-                       fill=fx.GOLD if e >= 1 else tuple(int(c * e) for c in fx.GOLD))
+            idraw.text((label_x, 150 + int(30 * (1 - e))), labels[si], font=label_font,
+                       fill=theme.edge if e >= 1 else tuple(int(c * e) for c in theme.edge))
 
         if kinds[si] == "card":
             c = card.frame(t / total, env[fi])
@@ -427,27 +497,31 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
             x, yy = (W - c.width) // 2, y_card + (card.h - c.height) // 2
             if e >= 1:
                 idraw.rounded_rectangle([x - 6, yy - 6, x + c.width + 6, yy + c.height + 6], 32,
-                                        fill=(60, 80, 130))
+                                        fill=tuple(int(v * 0.5) for v in theme.accent))
             img.paste(c, (x, yy), m)
             ty = y_card + card.h + 80
-        elif kinds[si] == "scroll":
-            panel = panels[page_of[si]]
-            if scene_focus:
-                # guided tour: glide to this scene's section and zoom in, then drift in slowly
-                prev = panel.target(scene_focus[si - 1]) if si > 0 else panel.target(None)
-                cur = panel.target(scene_focus[si])
-                move = move_time(si)
-                k = ease_in_out(lt / move)
-                drift = 1 + 0.05 * max(0.0, min(1.0, (lt - move) / max(0.1, (b - a) - move)))
-                cx, cy = prev[0] + (cur[0] - prev[0]) * k, prev[1] + (cur[1] - prev[1]) * k
-                pimg = panel.frame_at(cx, cy, (prev[2] + (cur[2] - prev[2]) * k) * drift,
-                                      spot=cur[3], strength=k)  # spotlight draws on as the camera arrives
+        elif kinds[si] in PANEL_KINDS:
+            if kinds[si] == "scroll":
+                panel = panels[page_of[si]]
+                if focus:
+                    # guided tour: glide to this scene's section and zoom in, then drift in slowly
+                    prev = panel.target(focus[si - 1]) if si > first_real else panel.target(None)
+                    cur = panel.target(focus[si])
+                    move = move_time(si)
+                    k = ease_in_out(lt / move)
+                    drift = 1 + 0.05 * max(0.0, min(1.0, (lt - move) / max(0.1, (b - a) - move)))
+                    cx, cy = prev[0] + (cur[0] - prev[0]) * k, prev[1] + (cur[1] - prev[1]) * k
+                    pimg = panel.frame_at(cx, cy, (prev[2] + (cur[2] - prev[2]) * k) * drift,
+                                          spot=cur[3], strength=k)  # spotlight draws on as the camera arrives
+                else:
+                    s_start, s_end = span_of[si]
+                    span = s_end - s_start
+                    hold = min(0.8, span * 0.15)
+                    prog = ease_in_out((t - s_start - hold) / max(0.1, span - 2 * hold))  # hold at top and bottom
+                    pimg = panel.frame(prog, span)
             else:
-                s_start, s_end = span_of[si]
-                span = s_end - s_start
-                hold = min(0.8, span * 0.15)
-                prog = ease_in_out((t - s_start - hold) / max(0.1, span - 2 * hold))  # hold at top and bottom
-                pimg = panel.frame(prog, span)
+                panel = vpanels[si]
+                pimg = panel.frame(max(0.0, visual_lt(si, t)))
             pimg = fx.light_sweep(pimg, (since - 0.45) / 0.8)
             m = panel.mask.point(lambda v, e=e: int(v * e)) if e < 1 else panel.mask
             img.paste(pimg, (MARGIN, y_panel + int(70 * (1 - e))), m)
@@ -455,16 +529,23 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         else:
             ty = (H - text_height(text)) // 2
 
-        active = sum(1 for s_ in starts[si] if lt >= s_) - 1 if lt >= starts[si][0] else -1
-        fade_out = max(0.0, min(1.0, 1 - ease_in_out((lt - (b - a - 0.25)) / 0.25)))
-        draw_kinetic_text(img, text, ty, lt, active, starts[si][active] if active >= 0 else 0.0, fade_out,
-                          count=True)
-        if disclaimer and t < 2.4:  # small on-screen note for the first ~2 s, not spoken
-            a_ = 1 - ease_in_out((t - 1.8) / 0.6)
+        if logos[si]:  # the site's own icon pops in over the visual, then becomes the label badge
+            try:
+                visuals.draw_logo(img, logos[si], visual_lt(si, t) - 0.05, (W / 2, y_panel + ph / 2),
+                                  (MARGIN, 140), theme)
+            except Exception:
+                logos[si] = None
+        if text:
+            active = sum(1 for s_ in starts[si] if lt >= s_) - 1 if lt >= starts[si][0] else -1
+            fade_out = max(0.0, min(1.0, 1 - ease_in_out((lt - (b - a - 0.25)) / 0.25)))
+            draw_kinetic_text(img, text, ty, lt, active, starts[si][active] if active >= 0 else 0.0, fade_out,
+                              count=True, theme=theme)
+        if disclaimer and content_t0 <= t < content_t0 + 2.4:  # small note for the first ~2 s, not spoken
+            a_ = 1 - ease_in_out((t - content_t0 - 1.8) / 0.6)
             if a_ > 0:
                 df = font(30)
                 dw = df.getlength(disclaimer)
-                col = tuple(int(c * a_ + bc * (1 - a_)) for c, bc in zip((210, 215, 230), BG_BOT))
+                col = tuple(int(c * a_ + bc * (1 - a_)) for c, bc in zip((210, 215, 230), theme.bg_bot))
                 ImageDraw.Draw(img).text(((W - dw) / 2, H - 190), disclaimer, font=df, fill=col)
         return img
 
@@ -484,7 +565,7 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
             if tr == "whip":
                 img = fx.whip(frozen[1], cur, u, direction, top=BAR_Y + 20)
             else:
-                img = fx.TRANSITIONS[tr](frozen[1], cur, u)
+                img = edge[tr](frozen[1], cur, u)
         else:
             img = compose(t, si, fi)
         dx = dy = 0

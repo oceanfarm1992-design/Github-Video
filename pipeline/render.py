@@ -16,7 +16,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import browser, config, db, motion, music, sfx
+from . import browser, config, db, fx, ghdata, motion, music, sfx, storyboard, visuals
+from .theme import for_source, kind as series_kind
 from .http import request
 
 log = logging.getLogger("render")
@@ -62,10 +63,24 @@ def mix_sfx(audio, track, total, dest):
     return dest
 
 
-def mix_music(voice, track, total, dest):
+def music_automation(cues):
+    """Music that follows the edit: it swells into the call to action, drops out for the beat before the
+    circle-wipe impact, comes back on the hit, and carries the end card (no voice there)."""
+    at = dict((k, t) for t, k in cues if k in ("cta", "end"))
+    expr = "1"
+    if "end" in at:
+        expr = f"if(gte(t,{at['end']:.3f}),1.3,{expr})"
+    if "cta" in at and at["cta"] > 3:
+        a, b, c = at["cta"] - 2.5, at["cta"] - 0.35, at["cta"]
+        expr = (f"if(between(t,{a:.3f},{b:.3f}),1+0.5*(t-{a:.3f})/{b - a:.3f},"
+                f"if(between(t,{b:.3f},{c:.3f}),0.12,{expr}))")
+    return f"volume='{expr}':eval=frame"
+
+
+def mix_music(voice, track, total, dest, cues=()):
     """Voice + music: music fades in/out and is pushed down (sidechain) whenever the voice speaks."""
     fade_out = max(0.0, total - 1.5)
-    mus = (f"aresample=44100,volume={MUSIC_VOLUME},afade=t=in:d=1.0,"
+    mus = (f"aresample=44100,volume={MUSIC_VOLUME},{music_automation(cues)},afade=t=in:d=0.3,"
            f"afade=t=out:st={fade_out:.3f}:d=1.5")
     if voice:
         cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(voice), "-i", str(track), "-filter_complex",
@@ -104,7 +119,7 @@ def sections_of(topic):
 def tools_of(topic):
     """The verified tools list of an AI-tools topic, else None."""
     try:
-        if topic and str(topic["source"]).startswith(("tools:", "sites:")):
+        if topic and str(topic["source"]).startswith(("tools:", "sites:", "ranking:")):
             return json.loads(topic["raw"] or "{}").get("tools") or None
     except (KeyError, IndexError, TypeError, ValueError):
         pass
@@ -265,17 +280,17 @@ def scenes_for(script):
     return [s["hook"]] + s["beats"] + [s["outro"]]
 
 
-def srt(scenes, path):
+def srt(scenes, path, offset=0.0):
     def ts(t):
         return f"{int(t // 3600):02}:{int(t % 3600 // 60):02}:{int(t % 60):02},{int(t % 1 * 1000):03}"
-    t, out = 0.0, []
+    t, out = offset, []
     for i, (text, dur) in enumerate(scenes, 1):
         out.append(f"{i}\n{ts(t)} --> {ts(t + dur)}\n{text}\n")
         t += dur
     Path(path).write_text("\n".join(out), encoding="utf-8")
 
 
-def render(content, topic=None):
+def render(content, topic=None, conn=None):
     out = Path(config.OUT_DIR)
     for sub in ("video", "audio", "assets"):
         (out / sub).mkdir(parents=True, exist_ok=True)
@@ -284,10 +299,17 @@ def render(content, topic=None):
     mp4 = out / "video" / f"{h}.mp4"
     if mp4.exists():
         return str(mp4)  # never regenerate an unchanged asset
+    if topic and str(topic["source"]).startswith("recap:"):
+        from . import recap
+        return recap.render(content, topic, mp4)
 
+    theme = for_source(topic["source"] if topic else "")
+    kind = series_kind(topic["source"] if topic else "")
+    scene_visuals = scene_logos = None
+    gh = {}
     tools = tools_of(topic)
     # 10-tool lists may run to 88 s (YouTube/Instagram); website parts stay under Facebook's 60 s
-    max_seconds = MAX_SECONDS_TOOLS if tools and str(topic["source"]).startswith("tools:") else MAX_SECONDS
+    max_seconds = MAX_SECONDS_TOOLS if tools and kind in ("tools", "ranking") else MAX_SECONDS
     scene_pages = scene_labels = scene_focus = None
     card = page = page_url = None
     sections = sections_of(topic)
@@ -301,6 +323,7 @@ def render(content, topic=None):
             scene_pages = [(shot, tool["url"])] * len(texts)
             scene_focus = [None] + [b.get("box") for b in beats] + [None]
             scene_labels = [f"{promo_raw.get('brand', '')}  ·  {tool['name']}"] * len(texts)
+            scene_logos = [ghdata.logo(tool["url"], out / "assets")] * len(texts)
     elif tools and sections and len(tools) == 1:
         # one website, guided tour: every scene on its page; the camera glides and zooms to each section
         site = tools[0]
@@ -310,40 +333,62 @@ def render(content, topic=None):
             scene_focus = [None, None] + [s["box"] for s in sections] + [None]
             part = json.loads(topic["raw"] or "{}").get("part", 1)
             scene_labels = [f"Part {part}  ·  {site['name']}"] * len(texts)
+            scene_logos = [ghdata.logo(site["url"], out / "assets")] * len(texts)
     elif tools:  # one scene per tool: its homepage live in a browser window, labelled "#i/N  Name"
         n = len(tools)
         scene_pages = [None] + [(browser.capture(t["url"], out / "assets", any_site=True, max_css_height=2600),
                                  t["url"]) for t in tools] + [None]
         scene_pages = [p if p and p[0] else None for p in scene_pages]
         scene_labels = [None] + [f"#{i}/{n}  {t['name']}" for i, t in enumerate(tools, 1)] + [None]
+        if kind == "ranking":  # countdown: "#5 ... #1", each repo's owner avatar as its badge
+            scene_labels = [None] + [f"#{t.get('rank', i)}  {t['name'].split('/')[-1]}"
+                                     for i, t in enumerate(tools, 1)] + [None]
+            avatars, podium = storyboard.ranking_media(tools, out / "assets")
+            scene_logos = [None] + avatars + [None]
+            scene_visuals = [None] * (n + 1) + [("podium", podium) if podium else None]
+        else:
+            scene_logos = storyboard.tool_logos(tools, out / "assets")
+            scene_visuals = storyboard.tool_compares(tools, out / "assets")
         if len(scene_pages) != len(texts):  # script and tool list disagree: show text-only scenes
-            scene_pages = scene_labels = None
+            scene_pages = scene_labels = scene_logos = scene_visuals = None
     else:
         card = fetch_image(image_url(topic), out / "assets") if topic else None
         if topic and os.environ.get("PAGE_SCROLL", "1") != "0":
             page_url = next((u for u in (topic["github_url"], topic["url"]) if browser.supported(u)), None)
         page = browser.capture(page_url, out / "assets") if page_url else None
+        if kind == "github" and topic["github_url"]:
+            gh = ghdata.for_video(topic["github_url"], out / "assets", conn)
+            scene_visuals = storyboard.github_visuals(len(texts), gh) if gh else None
     clips = narrate(texts, out / "audio")
     if clips:
         scenes = [(t, dur + PAD) for t, (_, dur) in zip(texts, clips)]
     else:
         scenes = [(t, max(3.0, len(t.split()) / WPS + 0.6)) for t in texts]
+    extras = visuals.INTRO + visuals.ENDCARD  # hook frame before, end card after the narration
     # stay under the platform limit: drop the last middle beat(s) instead of failing the whole video
-    while sum(d for _, d in scenes) > max_seconds and len(scenes) > 3:
+    while sum(d for _, d in scenes) + extras > max_seconds and len(scenes) > 3:
         del scenes[-2]
         if clips:
             del clips[-2]
-        for lst in (scene_pages, scene_labels, scene_focus):
+        for lst in (scene_pages, scene_labels, scene_focus, scene_visuals, scene_logos):
             if lst:
                 del lst[-2]
-    total = sum(d for _, d in scenes)
+    total = sum(d for _, d in scenes) + extras
     if total < 30:  # pad the last scene (silence) to the 30s floor
         scenes[-1] = (scenes[-1][0], scenes[-1][1] + 30 - total)
         total = 30.0
     if total > max_seconds:
         raise RuntimeError(f"script too long for a Short: {total:.0f}s")
+    n_items = len(scenes) - 2 if kind in ("tools", "ranking") else None
+    intro = storyboard.intro(kind, topic, content["title"], n_items, gh)
+    endcard = storyboard.endcard(kind, topic, n_items)
 
-    srt(scenes, out / "video" / f"{h}.srt")
+    srt(scenes, out / "video" / f"{h}.srt", offset=visuals.INTRO)
+    try:  # the settled hook frame is the cover / thumbnail
+        backdrop = fx.Backdrop(theme.bg_top, theme.bg_bot, accent=theme.accent)
+        visuals.cover(intro, theme, backdrop.frame(0)).save(out / "video" / f"{h}.jpg", quality=90)
+    except Exception as e:
+        log.warning("cover image skipped: %s", e)
 
     # 1) narration track, each clip padded to its scene length so audio and slides stay in lockstep
     audio = None
@@ -356,32 +401,36 @@ def render(content, topic=None):
         parts = "".join(
             f"[{i}:a]aresample=44100,afade=t=in:d=0.015,afade=t=out:st={max(0.0, clips[i][1] - 0.02):.3f}:d=0.02,"
             f"apad=whole_dur={scenes[i][1]:.3f}[a{i}];" for i in range(len(clips)))
-        fc = parts + "".join(f"[a{i}]" for i in range(len(clips))) + f"concat=n={len(clips)}:v=0:a=1,apad[aout]"
+        fc = (parts + "".join(f"[a{i}]" for i in range(len(clips)))
+              + f"concat=n={len(clips)}:v=0:a=1,adelay={int(visuals.INTRO * 1000)}:all=1,apad[aout]")
         cmd += ["-filter_complex", fc, "-map", "[aout]", "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "128k", str(audio)]
         subprocess.run(cmd, check=True, timeout=300)
 
-    # 1b) synthetic background music (hacker / horror), ducked under the voice
-    style = music.style_for(topic["source"] if topic else "")
-    if style != "off":
-        try:
-            audio = mix_music(audio, music.track(style, total, out / "audio"), total, out / "audio" / f"{h}.mix.m4a")
-        except Exception as e:  # music is a nice-to-have; never lose the video over it
-            log.warning("background music skipped: %s", e)
-
-    # 2) lay out the video (fills the sound cues), add the sound design, then pipe the frames into the encoder
+    # 2) lay out the video: fills the cues (transitions, call to action, end card) for the sound design
     events = []
     gen = motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT"), page, page_url,
                         scene_pages=scene_pages, scene_labels=scene_labels, scene_focus=scene_focus,
-                        disclaimer=DISCLAIMER if is_sites else None, events=events)
+                        disclaimer=DISCLAIMER if is_sites else None, events=events, theme=theme,
+                        intro=intro, endcard=endcard, scene_visuals=scene_visuals, scene_logos=scene_logos)
     first = next(gen)
+
+    # 3) synthetic background music in the series flavour, following the edit, ducked under the voice
+    source = topic["source"] if topic else ""
+    style = music.style_for(source)
+    if style != "off":
+        try:
+            track = music.track(style, total, out / "audio", music.flavor_for(source))
+            audio = mix_music(audio, track, total, out / "audio" / f"{h}.mix.m4a", events)
+        except Exception as e:  # music is a nice-to-have; never lose the video over it
+            log.warning("background music skipped: %s", e)
     if audio and events and os.environ.get("SFX", "1") != "0":
         try:
             track = sfx.track(events, total, out / "audio" / f"{h}.sfx.wav")
             audio = mix_sfx(audio, track, total, out / "audio" / f"{h}.sfxmix.m4a")
         except Exception as e:  # sound effects are a nice-to-have; never lose the video over them
             log.warning("sound effects skipped: %s", e)
-    # fade in/out to black; audio normalised to -14 LUFS (the level Reels, Shorts and TikTok play at)
-    fade = f"fade=t=in:st=0:d=0.4,fade=t=out:st={total - 0.5:.3f}:d=0.5,format=yuv420p"
+    # no fade-in: frame 0 is the cover; fade out to black; audio normalised to -14 LUFS (Reels/Shorts/TikTok)
+    fade = f"fade=t=out:st={total - 0.5:.3f}:d=0.5,format=yuv420p"
     afilter = f"{loudnorm(audio) + ',alimiter=limit=0.84:level=false' if audio else 'anull'},aresample=44100,afade=t=out:st={total - 0.5:.3f}:d=0.5"
     enc = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
            "-r", str(motion.FPS), "-i", "-"]
@@ -415,7 +464,7 @@ def run(conn):
     for c in rows:
         try:
             topic = conn.execute("SELECT * FROM topics WHERE id=?", (c["tid"],)).fetchone()
-            path = render(dict(c), topic)
+            path = render(dict(c), topic, conn)
             conn.execute("UPDATE contents SET video_path=?, template='card-v2' WHERE id=?", (path, c["id"]))
             conn.execute("UPDATE topics SET renders=renders+1 WHERE id=?", (c["tid"],))
             db.set_status(conn, c["tid"], "QC")

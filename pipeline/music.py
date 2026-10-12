@@ -20,13 +20,32 @@ def _note(n):
     return 440.0 * 2 ** ((n - 69) / 12)
 
 
-def _hacker(seconds, rng):
+# The owner's hacker sound for every series, each series in its own key, tempo and melody so viewers
+# recognise it. Intervals are semitones from A (bass A2, arpeggio A3); "github" is the original track.
+FLAVORS = {
+    "github": dict(bpm=110, shift=0, bass=(0, 0, 3, -2), arp=(0, 3, 7, 10, 12, 7, 3, 7), arp_gain=0.10,
+                   hat=0.05, kick=0.0, drone=0.0),
+    "tools": dict(bpm=122, shift=3, bass=(0, 0, -4, -2), arp=(0, 7, 12, 15, 19, 15, 12, 7), arp_gain=0.09,
+                  hat=0.06, kick=0.22, drone=0.0),
+    "sites": dict(bpm=96, shift=5, bass=(0, 1, 0, -2), arp=(0, 3, 6, 10, 12, 6, 3, 6), arp_gain=0.08,
+                  hat=0.035, kick=0.0, drone=0.12),
+    "promo": dict(bpm=100, shift=-4, bass=(0, 0, 5, 7), arp=(0, 4, 7, 11, 12, 11, 7, 4), arp_gain=0.07,
+                  hat=0.03, kick=0.12, drone=0.0),
+    "ranking": dict(bpm=126, shift=7, bass=(0, 0, 3, 5), arp=(0, 3, 7, 12, 15, 12, 7, 3), arp_gain=0.09,
+                    hat=0.06, kick=0.25, drone=0.0),
+    "recap": dict(bpm=128, shift=2, bass=(0, -4, -2, -5), arp=(0, 7, 10, 12, 15, 12, 10, 7), arp_gain=0.09,
+                  hat=0.06, kick=0.25, drone=0.0),
+}
+
+
+def _hacker(seconds, rng, flavor="github"):
+    fl = FLAVORS.get(flavor, FLAVORS["github"])
     n = int(seconds * SR)
     out = array.array("f", bytes(4 * n))
-    bpm = 110
+    bpm = fl["bpm"]
     sixteenth = 60 / bpm / 4
-    bass_notes = [45, 45, 48, 43]          # A2 A2 C3 G2, one per beat-group of 4 sixteenths x 4
-    arp = [57, 60, 64, 67, 69, 64, 60, 64]  # A3 C4 E4 G4 A4 E4 C4 E4 (A minor)
+    bass_notes = [45 + fl["shift"] + b for b in fl["bass"]]  # one per beat-group of 4 sixteenths x 4
+    arp = [57 + fl["shift"] + a for a in fl["arp"]]
     step = int(sixteenth * SR)
     # bass + arpeggio + hats, note by note
     for i in range(int(seconds / sixteenth) + 1):
@@ -48,7 +67,7 @@ def _hacker(seconds, rng):
         for k in range(max(0, length)):
             t = k / SR
             env = math.exp(-t * 18)
-            out[start + k] += 0.10 * env * math.tanh(3 * math.sin(2 * math.pi * f * t))
+            out[start + k] += fl["arp_gain"] * env * math.tanh(3 * math.sin(2 * math.pi * f * t))
         # hi-hat tick on the off-beat 8ths
         if bar_pos % 4 == 2:
             length = min(n - start, int(0.05 * SR))
@@ -57,16 +76,25 @@ def _hacker(seconds, rng):
                 w = rng.uniform(-1, 1)
                 hp = w - prev  # crude high-pass
                 prev = w
-                out[start + k] += 0.05 * math.exp(-k / SR * 60) * hp
+                out[start + k] += fl["hat"] * math.exp(-k / SR * 60) * hp
+        # kick on every beat (driving flavors)
+        if fl["kick"] and i % 4 == 0:
+            for k in range(max(0, min(n - start, int(0.18 * SR)))):
+                t = k / SR
+                out[start + k] += fl["kick"] * math.exp(-t * 22) * math.sin(2 * math.pi * (45 + 90 * math.exp(-t * 30)) * t)
     # echo on everything (3/16 delay), then a quiet low pad underneath
     d = int(3 * sixteenth * SR)
     for k in range(d, n):
         out[k] += 0.35 * out[k - d]
+    tr = 2 ** (fl["shift"] / 12)
+    root = 55 * tr
     for k in range(n):
         t = k / SR
         swell = 0.5 + 0.5 * math.sin(2 * math.pi * t / 8.0)
-        out[k] += 0.06 * swell * (math.sin(2 * math.pi * 110 * t) + math.sin(2 * math.pi * 110.6 * t)
-                                  + 0.6 * math.sin(2 * math.pi * 164.8 * t))
+        out[k] += 0.06 * swell * (math.sin(2 * math.pi * 110 * tr * t) + math.sin(2 * math.pi * 110.6 * tr * t)
+                                  + 0.6 * math.sin(2 * math.pi * 164.8 * tr * t))
+        if fl["drone"]:  # low tension underneath (websites series)
+            out[k] += fl["drone"] * (math.sin(2 * math.pi * root * t) + 0.7 * math.sin(2 * math.pi * root * 1.06 * t))
     return out
 
 
@@ -106,15 +134,18 @@ def _horror(seconds, rng):
     return out
 
 
-def track(style, seconds, out_dir):
-    """Path to a WAV of `style` ("hacker" | "horror") lasting `seconds` (cached)."""
+def track(style, seconds, out_dir, flavor="github"):
+    """Path to a WAV of `style` ("hacker" | "horror") lasting `seconds` (cached); hacker comes in the
+    series `flavor` (FLAVORS)."""
     style = style if style in ("hacker", "horror") else "hacker"
+    flavor = flavor if flavor in FLAVORS else "github"
     seconds = max(5.0, round(seconds + 0.5, 1))
-    path = Path(out_dir) / f"music_{style}_{seconds}_v{VERSION}.wav"
+    name = f"{style}-{flavor}" if style == "hacker" else style
+    path = Path(out_dir) / f"music_{name}_{seconds}_v{VERSION}.wav"
     if path.exists():
         return path
     rng = random.Random(f"{style}-{seconds}")  # deterministic per length
-    samples = _hacker(seconds, rng) if style == "hacker" else _horror(seconds, rng)
+    samples = _hacker(seconds, rng, flavor) if style == "hacker" else _horror(seconds, rng)
     peak = max(1e-6, max(abs(min(samples)), abs(max(samples))))
     scale = 0.9 * 32767 / peak
     pcm = array.array("h", (int(s * scale) for s in samples))
@@ -125,6 +156,14 @@ def track(style, seconds, out_dir):
         w.setframerate(SR)
         w.writeframes(pcm.tobytes())
     return path
+
+
+def flavor_for(source):
+    """Series variation of the hacker track; MUSIC_FLAVOR pins one for every series."""
+    import os
+    from .theme import for_source
+    pinned = os.environ.get("MUSIC_FLAVOR", "").strip().lower()
+    return pinned if pinned in FLAVORS else for_source(source).music
 
 
 def style_for(source):

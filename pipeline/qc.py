@@ -34,7 +34,8 @@ def check(conn, c, topic):
             errs.append("video codec not h264")
         if not au or au[0]["codec_name"] != "aac":
             errs.append("audio missing/not aac")
-        if not 25 <= dur <= (90 if str(topic["source"]).startswith("tools:") else 60):  # Reels limits
+        long_ok = str(topic["source"]).startswith(("tools:", "ranking:"))  # lists: Shorts/Reels allow 90 s
+        if not 25 <= dur <= (90 if long_ok else 60):
             errs.append(f"duration {dur:.0f}s out of range")
     except Exception as e:
         errs.append(f"probe failed: {e}")
