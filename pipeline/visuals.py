@@ -177,26 +177,27 @@ ENDCARD = 2.2  # s
 def draw_endcard(img, end, theme, lt):
     """end: {"question", "options", "line"}: comment poll, FOLLOW button, what comes next."""
     d = ImageDraw.Draw(img)
-    tag = pill(theme.tag, font(30), theme.accent + (60,), theme.accent, spacing=4)
-    img.paste(tag, ((W - tag.width) // 2, 300), tag)
     # poll card
     e = fx.spring(lt * 1.2)
-    card = Image.new("RGBA", (CARD_W, 470), (0, 0, 0, 0))
-    cd = ImageDraw.Draw(card)
-    cd.rounded_rectangle([0, 0, CARD_W - 1, 469], 36, fill=(255, 255, 255, 22), outline=theme.accent + (120,), width=3)
-    qf = font(56)
-    for i, line in enumerate(wrap(end["question"], qf, CARD_W - 80)[:2]):
-        centered(cd, 44 + i * 70, line, qf, WHITE, width=CARD_W)
     opts = end.get("options") or []
     many = len(opts) > 3
     cw, ch, gap = (130, 96, 26) if many else (230, 104, 40)
-    per_row = 5 if many else len(opts)
+    per_row = 5 if many else max(1, len(opts))
+    rows = -(-len(opts) // per_row) if opts else 0
+    card_h = 300 + rows * (ch + 22)
+    card = Image.new("RGBA", (CARD_W, card_h), (0, 0, 0, 0))
+    cd = ImageDraw.Draw(card)
+    cd.rounded_rectangle([0, 0, CARD_W - 1, card_h - 1], 36, fill=(255, 255, 255, 22),
+                         outline=theme.accent + (120,), width=3)
+    qf = font(56)
+    for i, line in enumerate(wrap(end["question"], qf, CARD_W - 80)[:2]):
+        centered(cd, 44 + i * 70, line, qf, WHITE, width=CARD_W)
     of = font(46 if many else 50)
     for i, o in enumerate(opts):
         row, col = divmod(i, per_row)
         n_row = min(per_row, len(opts) - row * per_row)
         x0 = (CARD_W - (n_row * cw + (n_row - 1) * gap)) / 2 + col * (cw + gap)
-        y0 = 200 + row * (ch + 22) - (0 if len(opts) > per_row else -40)
+        y0 = 200 + row * (ch + 22)
         k = fx.spring(lt - 0.25 - 0.05 * i)
         if k <= 0:
             continue
@@ -206,8 +207,10 @@ def draw_endcard(img, end, theme, lt):
         centered(hd, (ch - of.size * 1.15) / 2, o, of, (12, 12, 16), width=cw)
         paste_scaled(card, chip, (x0 + cw / 2, y0 + ch / 2), min(1.15, k))
     hint = font(32)
-    centered(cd, 420, "Comment your answer below", hint, GREY, width=CARD_W)
-    card_y = 400 + int(60 * (1 - min(1.0, e)))
+    centered(cd, card_h - 64, "Comment your answer below", hint, GREY, width=CARD_W)
+    card_y = 400 + int(60 * (1 - min(1.0, e))) - (card_h - 470) // 2
+    tag = pill(theme.tag, font(30), theme.accent + (60,), theme.accent, spacing=4)
+    img.paste(tag, ((W - tag.width) // 2, min(300, 400 - (card_h - 470) // 2 - 90)), tag)
     paste_scaled(img, card, (W / 2, card_y + card.height / 2), 0.9 + 0.1 * min(1.0, e))
     # follow button: pops in, then breathes; a light sweep runs across it
     k = fx.spring(lt - 0.55)
