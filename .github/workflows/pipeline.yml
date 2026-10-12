@@ -60,6 +60,10 @@ jobs:
       DAILY_TOOLS_VIDEOS: ${{ vars.DAILY_TOOLS_VIDEOS || '1' }}
       DAILY_PROMO_VIDEOS: ${{ vars.DAILY_PROMO_VIDEOS || '1' }}
       TOOLS_PER_VIDEO: ${{ vars.TOOLS_PER_VIDEO || '10' }}
+      RANKING_WEEKDAY: ${{ vars.RANKING_WEEKDAY || '6' }}
+      RECAP_WEEKDAY: ${{ vars.RECAP_WEEKDAY || '5' }}
+      YT_FIRST_COMMENT: ${{ vars.YT_FIRST_COMMENT || '1' }}
+      MUSIC_FLAVOR: ${{ vars.MUSIC_FLAVOR }}
       GENERATE_SCORE_NEWS: ${{ vars.GENERATE_SCORE_NEWS || '65' }}
       GENERATE_SOURCES: ${{ github.event.inputs.sources }}
       MAX_RENDERS_PER_TOPIC: ${{ vars.MAX_RENDERS_PER_TOPIC || '2' }}

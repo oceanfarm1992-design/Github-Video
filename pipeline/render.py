@@ -360,6 +360,9 @@ def render(content, topic=None, conn=None):
             gh = ghdata.for_video(topic["github_url"], out / "assets", conn)
             scene_visuals = storyboard.github_visuals(len(texts), gh) if gh else None
     clips = narrate(texts, out / "audio")
+    if not clips and os.environ.get("GITHUB_ACTIONS") and os.environ.get("ALLOW_SILENT") != "1":
+        # never publish a silent Short: fail this render so the topic retries on a later run
+        raise RuntimeError("narration failed (voice engines unavailable); not rendering a silent video")
     if clips:
         scenes = [(t, dur + PAD) for t, (_, dur) in zip(texts, clips)]
     else:
