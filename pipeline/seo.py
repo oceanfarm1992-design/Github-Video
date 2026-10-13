@@ -47,6 +47,11 @@ SERIES = {
         "about": "Everything from this week's videos in 30 seconds.",
         "playlist": "Weekly Recaps",
     },
+    "long": {
+        "keywords": ["open source", "AI tools", "GitHub", "tutorial", "explained", "useful websites"],
+        "about": "Full deep dives: GitHub projects, AI tools and websites explained from start to finish.",
+        "playlist": "Full Deep Dives",
+    },
     "news": {
         "keywords": ["AI news", "artificial intelligence", "tech news"],
         "about": "AI and open-source news in under a minute.",

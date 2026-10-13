@@ -48,7 +48,7 @@ def kind(source):
     source = str(source or "")
     if source == "github":
         return "github"
-    for k in ("tools", "promo", "sites", "ranking", "recap"):
+    for k in ("tools", "promo", "sites", "ranking", "recap", "long"):
         if source.startswith(k + ":"):
             return k
     return "news"

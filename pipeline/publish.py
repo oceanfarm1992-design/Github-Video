@@ -296,8 +296,11 @@ def run(conn):
             continue
         done = {r["platform"] for r in conn.execute("SELECT platform FROM posts WHERE content_id=?", (c["id"],))}
         errors, video_url, seconds = [], None, None
+        from . import longform
+        # long-video day: this Short leaves its YouTube and Facebook slot to the long video
+        skip = {"youtube", "facebook", "facebook_story"} if longform.skip_short(conn, c) else set()
         for name, (needs_url, fn) in configured.items():
-            if name in done:
+            if name in done or name in skip:
                 continue
             if story_waits(name, done):
                 log.info("skip %s for %s: the video is not live there yet", name, c["title"])

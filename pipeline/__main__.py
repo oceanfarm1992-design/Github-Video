@@ -3,7 +3,7 @@ import argparse
 import logging
 import sys
 
-from . import analytics, db, engage, preview, zernio_check, discover, tools, sites, promo, voicetest, filter as filt, generate, publish, qc, ranking, recap, render, research, score
+from . import analytics, db, engage, longform, preview, zernio_check, discover, tools, sites, promo, voicetest, filter as filt, generate, publish, qc, ranking, recap, render, research, score
 
 STAGES = {
     "collect": ["discover", "filter"],           # every 30-60 min: cheap metadata
@@ -14,6 +14,8 @@ STAGES = {
     "preview": ["preview"],                      # sample render, never publishes
     "voicetest": ["voicetest"],                   # cloned-voice A/B samples, never publishes
     "zernio": ["zernio"],                         # read-only: list Zernio accounts + automations
+    "long": ["long"],                             # 3x a week: 8-15 min video for YouTube + Facebook
+    "longpreview": ["longpreview"],               # long video render only (sources = github|tools|sites)
     "analyze": ["analytics"],                    # daily/weekly
     "all": ["discover", "filter", "research", "score", "tools", "sites", "promo", "generate", "render", "qc", "publish", "engage", "analytics"],
 }
@@ -32,8 +34,13 @@ def run_stage(name, conn):
         return promo.run(conn)
     if name == "sites":
         return sites.run(conn)
-    if name == "weekly":  # weekly ranking (queued for generate) and weekly recap (queued for render)
-        return {"ranking": ranking.run(conn), "recap": recap.run(conn)}
+    if name == "weekly":  # weekly ranking, weekly recap, and starting today's long video (Mon/Wed/Fri)
+        return {"ranking": ranking.run(conn), "recap": recap.run(conn), "long": longform.dispatch_if_due(conn)}
+    if name == "long":
+        return longform.run(conn)
+    if name == "longpreview":
+        import os
+        return longform.run(conn, fmt=(os.environ.get("GENERATE_SOURCES") or "github").strip(), publish_it=False)
     if name == "research":
         return research.run(conn)
     if name == "score":

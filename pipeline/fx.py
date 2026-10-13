@@ -46,10 +46,11 @@ class Backdrop:
     CELL = 90
     GRID_SPEED = 0.6  # px per frame
 
-    def __init__(self, top=(14, 16, 28), bottom=(44, 48, 72), seed=7, accent=ACCENT):
+    def __init__(self, top=(14, 16, 28), bottom=(44, 48, 72), seed=7, accent=ACCENT, size=(W, H)):
         rng = np.random.default_rng(seed)
         c = self.CELL
-        h, w = H + c, W + c
+        self.w, self.h = size
+        h, w = self.h + c, self.w + c
         f = np.linspace(0, 1, h, dtype=np.float32)[:, None, None]
         img = np.array(top, np.float32) * (1 - f) + np.array(bottom, np.float32) * f
         img = np.repeat(img, w, axis=1)
@@ -61,7 +62,7 @@ class Backdrop:
         img += lines[:, :, None] * (0.5 + 0.7 * tint)
         img += rng.normal(0, 2.4, (h, w, 1)).astype(np.float32)  # film grain (background only)
         self.big = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
-        self.dots = [(rng.uniform(0, W), rng.uniform(0, H), rng.uniform(0.25, 1.0)) for _ in range(22)]
+        self.dots = [(rng.uniform(0, self.w), rng.uniform(0, self.h), rng.uniform(0.25, 1.0)) for _ in range(22)]
         self.sprites = {}
         self.accent = tuple(accent)
 
@@ -76,10 +77,10 @@ class Backdrop:
 
     def frame(self, fi):
         off = int(fi * self.GRID_SPEED) % self.CELL
-        img = self.big.crop((off, off, off + W, off + H))
+        img = self.big.crop((off, off, off + self.w, off + self.h))
         for x0, y0, depth in self.dots:
             spr = self._sprite(depth)
-            span = H + spr.height
+            span = self.h + spr.height
             y = (y0 - fi * 1.6 * depth) % span - spr.height  # nearer particles move faster (parallax)
             x = x0 + 18 * math.sin(fi / 90 + x0)
             img.paste(spr, (int(x - spr.width / 2), int(y)), spr)
@@ -92,16 +93,17 @@ def grade(img):
     return ImageEnhance.Color(ImageEnhance.Contrast(img).enhance(1.06)).enhance(1.08)
 
 
-@lru_cache(maxsize=1)
-def _vignette():
-    y, x = np.mgrid[0:H, 0:W].astype(np.float32)
-    d = np.sqrt(((x - W / 2) / (W / 2)) ** 2 + ((y - H / 2) / (H / 2)) ** 2) / math.sqrt(2)
+@lru_cache(maxsize=4)
+def _vignette(size=(W, H)):
+    w, h = size
+    y, x = np.mgrid[0:h, 0:w].astype(np.float32)
+    d = np.sqrt(((x - w / 2) / (w / 2)) ** 2 + ((y - h / 2) / (h / 2)) ** 2) / math.sqrt(2)
     v = 255 * (1 - 0.30 * np.clip((d - 0.45) / 0.55, 0, 1) ** 1.6)
     return Image.fromarray(np.repeat(v[:, :, None], 3, axis=2).astype(np.uint8))
 
 
 def vignette(img):
-    return ImageChops.multiply(img, _vignette())
+    return ImageChops.multiply(img, _vignette(img.size))
 
 
 @lru_cache(maxsize=8)
@@ -184,14 +186,15 @@ def whip(prev, cur, u, direction=1, top=0):
     k = ease_in_out(u)
     a, b = np.asarray(prev), np.asarray(cur)
     pa, pb = a[top:], b[top:]
-    shift = int(round(k * W))
+    w = pa.shape[1]
+    shift = int(round(k * w))
     canvas = np.empty_like(pa)
     if direction > 0:  # content moves left; the new shot comes in from the right
-        canvas[:, :W - shift] = pa[:, shift:]
-        canvas[:, W - shift:] = pb[:, :shift]
+        canvas[:, :w - shift] = pa[:, shift:]
+        canvas[:, w - shift:] = pb[:, :shift]
     else:
-        canvas[:, shift:] = pa[:, :W - shift]
-        canvas[:, :shift] = pb[:, W - shift:]
+        canvas[:, shift:] = pa[:, :w - shift]
+        canvas[:, :shift] = pb[:, w - shift:]
     blur = int(MAX_BLUR * math.sin(math.pi * k))
     if blur > 2:
         canvas = _box_blur_x(canvas, blur)
@@ -203,9 +206,10 @@ def whip(prev, cur, u, direction=1, top=0):
 def circle_wipe(prev, cur, u, center=None, colour=GOLD):
     """The new shot opens from a growing circle with a thin light ring on its edge."""
     k = ease_in_out(u)
-    cx, cy = center or (W / 2, H / 2)
-    r = math.hypot(max(cx, W - cx), max(cy, H - cy)) * k
-    mask = Image.new("L", (W, H), 0)
+    w, h = prev.size
+    cx, cy = center or (w / 2, h / 2)
+    r = math.hypot(max(cx, w - cx), max(cy, h - cy)) * k
+    mask = Image.new("L", (w, h), 0)
     ImageDraw.Draw(mask).ellipse([cx - r, cy - r, cx + r, cy + r], fill=255)
     out = Image.composite(cur, prev, mask)
     if 0 < k < 1:
@@ -216,12 +220,13 @@ def circle_wipe(prev, cur, u, center=None, colour=GOLD):
 def panel_wipe(prev, cur, u, skew=520, colour=GOLD):
     """A diagonal panel sweeps across left to right, revealing the new shot behind its bright edge."""
     k = ease_in_out(u)
-    p = k * (W + skew) - skew  # x of the edge at the bottom; the top leads by `skew`
-    mask = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(mask).polygon([(0, 0), (p + skew, 0), (p, H), (0, H)], fill=255)
+    w, h = prev.size
+    p = k * (w + skew) - skew  # x of the edge at the bottom; the top leads by `skew`
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).polygon([(0, 0), (p + skew, 0), (p, h), (0, h)], fill=255)
     out = Image.composite(cur, prev, mask)
     if 0 < k < 1:
-        ImageDraw.Draw(out).line([(p + skew, 0), (p, H)], fill=colour, width=8)
+        ImageDraw.Draw(out).line([(p + skew, 0), (p, h)], fill=colour, width=8)
     return out
 
 

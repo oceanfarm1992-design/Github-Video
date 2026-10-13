@@ -37,6 +37,8 @@ RANKING_WEEKDAY = _i("RANKING_WEEKDAY", 6)  # "Top 5 new GitHub repos this week"
 RANKING_SIZE = _i("RANKING_SIZE", 5)
 RECAP_WEEKDAY = _i("RECAP_WEEKDAY", 5)      # 30-second recap of the week's videos
 YT_FIRST_COMMENT = _i("YT_FIRST_COMMENT", 1)  # post the link as the first YouTube comment
+# long videos (YouTube + Facebook): weekday:format pairs; empty turns them off
+LONG_SCHEDULE = os.environ.get("LONG_SCHEDULE", "0:github,2:tools,4:sites")
 # at most this many videos per produce run; two daily produce slots catch up if GitHub drops one schedule
 MAX_VIDEOS_PER_RUN = _i("MAX_VIDEOS_PER_RUN", 1)
 GENERATE_SCORE_NEWS = _i("GENERATE_SCORE_NEWS", 65)

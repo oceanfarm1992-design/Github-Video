@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "collect | research | tools | sites | promo | produce | draft | engage | preview | zernio | voicetest | analyze | all"
+        description: "collect | research | tools | sites | promo | produce | draft | engage | preview | zernio | voicetest | analyze | long | longpreview | all"
         default: collect
       max_videos:
         description: "Override MAX_VIDEOS_PER_DAY for this run (optional)"
@@ -22,16 +22,18 @@ on:
 
 # One writer at a time: the SQLite state is restored/saved per run.
 concurrency:
-  group: pipeline-state
+  # long videos run 1-2 h in their own queue, so they never hold up or cancel the regular runs
+  group: ${{ startsWith(github.event.inputs.stage || '', 'long') && 'pipeline-long' || 'pipeline-state' }}
   cancel-in-progress: false
 
 permissions:
   contents: write
+  actions: write  # the produce run starts the long-video run (workflow_dispatch)
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: ${{ startsWith(github.event.inputs.stage || '', 'long') && 150 || 50 }}
     # Non-secret settings only. Secrets are given to the single step that needs them ("Run stage"),
     # so third-party install steps (pip packages, Playwright) never see them.
     env:
@@ -64,6 +66,7 @@ jobs:
       RECAP_WEEKDAY: ${{ vars.RECAP_WEEKDAY || '5' }}
       YT_FIRST_COMMENT: ${{ vars.YT_FIRST_COMMENT || '1' }}
       MUSIC_FLAVOR: ${{ vars.MUSIC_FLAVOR }}
+      LONG_SCHEDULE: ${{ vars.LONG_SCHEDULE || '0:github,2:tools,4:sites' }}
       GENERATE_SCORE_NEWS: ${{ vars.GENERATE_SCORE_NEWS || '65' }}
       GENERATE_SOURCES: ${{ github.event.inputs.sources }}
       MAX_RENDERS_PER_TOPIC: ${{ vars.MAX_RENDERS_PER_TOPIC || '2' }}
@@ -98,7 +101,7 @@ jobs:
             *)               s="${{ github.event.inputs.stage || 'collect' }}" ;;
           esac
           echo "name=$s" >> "$GITHUB_OUTPUT"
-          case "$s" in produce|all|preview|draft|voicetest) echo "heavy=true" >> "$GITHUB_OUTPUT" ;; *) echo "heavy=false" >> "$GITHUB_OUTPUT" ;; esac
+          case "$s" in produce|all|preview|draft|voicetest|long|longpreview) echo "heavy=true" >> "$GITHUB_OUTPUT" ;; *) echo "heavy=false" >> "$GITHUB_OUTPUT" ;; esac
 
       - name: Cache voice-clone models
         if: ${{ vars.VOICE_REF_REPO != '' && steps.stage.outputs.heavy == 'true' }}
@@ -177,7 +180,8 @@ jobs:
           if-no-files-found: ignore
 
       - name: Save state to `data` branch
-        if: ${{ always() && steps.restore.outcome == 'success' }}
+        # long runs only read the state (they record in Supabase): saving would overwrite newer runs' changes
+        if: ${{ always() && steps.restore.outcome == 'success' && !startsWith(steps.stage.outputs.name, 'long') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
