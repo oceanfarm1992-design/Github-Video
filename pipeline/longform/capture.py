@@ -47,6 +47,16 @@ DEEP_SECTIONS_JS = r"""(maxH) => {
 }"""
 
 
+# small fixed/sticky cookie and consent bars that the size rule in CLEAR_OVERLAYS_JS leaves on screen
+COOKIE_BARS_JS = r"""() => {
+  for (const el of document.querySelectorAll('body *')) {
+    const s = getComputedStyle(el);
+    if ((s.position === 'fixed' || s.position === 'sticky') && /cookie|consent|gdpr/i.test(el.innerText || ''))
+      el.remove();
+  }
+}"""
+
+
 def capture(url, out_dir, max_css_height=MAX_CSS_HEIGHT):
     """(png_path, sections) for a public page, or (None, []) when it cannot be shown."""
     out = Path(out_dir) / f"desk_{db.sha(url + db.today())[:24]}.png"
@@ -79,6 +89,7 @@ def capture(url, out_dir, max_css_height=MAX_CSS_HEIGHT):
                 page.wait_for_timeout(800)
                 page.keyboard.press("Escape")
                 page.evaluate(CLEAR_OVERLAYS_JS)
+                page.evaluate(COOKIE_BARS_JS)
                 text = page.title() + " " + page.evaluate("document.body ? document.body.innerText.slice(0, 3000) : ''")
                 if BLOCKED_RE.search(text):
                     log.info("capture of %s hit a bot-protection page; skipped", url)

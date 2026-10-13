@@ -16,7 +16,7 @@ log = logging.getLogger("longform.writer")
 MODEL = os.environ.get("LONG_MODEL", "claude-opus-5-5")
 PRICE = {"claude-opus-5-5": (4.0, 20.0)}
 WORDS_PER_MIN = 118  # measured: the cloned voice at VOICE_SPEED 1.1, with paragraph pauses
-MIN_WORDS, MAX_WORDS = 900, 1650  # about 8 to 15 minutes including chapter cards
+MIN_WORDS, MAX_WORDS = 980, 1650  # about 8 to 15 minutes including chapter cards
 
 SCHEMA = {
     "type": "object",
@@ -99,7 +99,7 @@ def validate(script, m, target):
         problems.append(f"visual ids {bad} do not exist")
     text = " ".join([script.get("title", "")] + [p["text"] for p in paras])
     n_words = len(re.findall(r"[A-Za-z0-9']+", text))
-    if not 0.8 * target <= n_words <= 1.2 * target:
+    if not 0.9 * target <= n_words <= 1.15 * target:
         problems.append(f"the script has {n_words} words; it must be close to {target}")
     source = m["facts"] + " " + m["subject"] + " " + " ".join(v.get("text", "") + " " + v["label"] for v in m["visuals"])
     invented = numbers(text) - numbers(source)

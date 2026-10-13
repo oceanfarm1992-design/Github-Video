@@ -51,6 +51,9 @@ def code_blocks(readme):
         lines = [ln.rstrip() for ln in body.strip("\n").splitlines()]
         if not lines or len(lines) > 60 or ghdata.SECRET_RE.search(body):
             continue
+        prose = lang.lower() in ("", "text", "txt", "md", "markdown") and             sum(len(x) for x in lines) / len(lines) > 60  # a sentence in a box, not code
+        if prose:
+            continue
         out.append({"lang": lang or "text", "lines": lines[:MAX_CODE_LINES]})
         if len(out) >= MAX_CODE_BLOCKS:
             break
@@ -163,7 +166,7 @@ def tools_review(conn, used, out_dir):
 def sites_tour(conn, used, out_dir):
     shorts = sites.used_urls(conn)
     entries = [(n, u) for n, u in sites.load_catalog() if u not in shorts and f"site:{u}" not in used][:40]
-    pages, items = _site_pages(entries, out_dir, need=4, max_items=5, min_sections=3)
+    pages, items = _site_pages(entries, out_dir, need=5, max_items=6, min_sections=3)
     if not items:
         return None
     facts = "\n\n".join(f"WEBSITE {i}: {it['name']} ({it['url']})\nDescription: {it['description']}"
