@@ -15,8 +15,8 @@ from ..generate import numbers
 log = logging.getLogger("longform.writer")
 MODEL = os.environ.get("LONG_MODEL", "claude-opus-5-5")
 PRICE = {"claude-opus-5-5": (4.0, 20.0)}
-WORDS_PER_MIN = 150  # the cloned voice at VOICE_SPEED 1.1
-MIN_WORDS, MAX_WORDS = 1200, 2150  # about 8 to 15 minutes of narration
+WORDS_PER_MIN = 118  # measured: the cloned voice at VOICE_SPEED 1.1, with paragraph pauses
+MIN_WORDS, MAX_WORDS = 900, 1650  # about 8 to 15 minutes including chapter cards
 
 SCHEMA = {
     "type": "object",
@@ -75,7 +75,7 @@ BRIEFS = {
 
 
 def target_words(material_words):
-    return max(MIN_WORDS, min(MAX_WORDS - 50, int(material_words * 0.6)))
+    return max(MIN_WORDS, min(MAX_WORDS - 50, int(material_words * 0.5)))
 
 
 def _prompt(m, target, problems=None):

@@ -19,10 +19,12 @@ MAX_CSS_HEIGHT = 9000
 # every h1-h3 with the text that follows it (until the next heading), and the box around both
 DEEP_SECTIONS_JS = r"""(maxH) => {
   const out = [], clean = s => (s || '').replace(/\s+/g, ' ').trim();
-  const heads = [...document.querySelectorAll('h1,h2,h3')].filter(h => {
+  // on GitHub only the README counts (the sidebar has its own 'Releases', 'Contributors' headings)
+  const root = document.querySelector('article.markdown-body') || document.body;
+  const heads = [...root.querySelectorAll('h1,h2,h3')].filter(h => {
     const r = h.getBoundingClientRect(); return r.width > 40 && r.height > 10 && r.top + scrollY < maxH - 80;
   });
-  const blocks = [...document.querySelectorAll('p,li,pre,blockquote,td')].map(el => {
+  const blocks = [...root.querySelectorAll('p,li,pre,blockquote,td')].map(el => {
     const q = el.getBoundingClientRect();
     return {el, y: q.top + scrollY, x0: q.left, x1: q.right, y1: q.bottom + scrollY, w: q.width};
   }).filter(b => b.w >= 40);
