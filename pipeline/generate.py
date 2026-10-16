@@ -6,7 +6,7 @@ import os
 import re
 import time
 
-from . import config, db
+from . import config, db, trending
 from .http import request
 
 log = logging.getLogger("generate")
@@ -179,7 +179,7 @@ def hashtags(row):
     elif k == "ranking":
         tags = ["#GitHub", "#OpenSource", "#Top5", "#Programming", "#TechNews"]
     elif k == "github":
-        tags = ["#OpenSource", "#GitHub", "#AI"]
+        tags = ["#GitHubTrending", "#OpenSource", "#GitHub"] if raw.get("trending") else ["#OpenSource", "#GitHub", "#AI"]
         for t in raw.get("topics", [])[:6]:
             tag = "#" + re.sub(r"[^A-Za-z0-9]", "", t.title())
             if 3 < len(tag) <= 25 and tag.lower() not in {x.lower() for x in tags}:
@@ -307,6 +307,11 @@ def run(conn):
                     rewritten = None
                 if rewritten:
                     hook, beats = rewritten["hook"], rewritten["beats"]
+                tr = trending.info(row)
+                if tr:  # GitHub's own Trending rank opens the video
+                    hook = (f"This is the number one trending repo on GitHub today: {row['title'].split('/')[-1]}."
+                            if tr["rank"] == 1 else
+                            f"Number {tr['rank']} on GitHub Trending today: {row['title'].split('/')[-1]}.")
                 cta, resource = pick_cta(row)
                 response = f"Here's the link: {resource}"
                 outro = f"Comment {cta} and I'll send you the link."  # works on every platform

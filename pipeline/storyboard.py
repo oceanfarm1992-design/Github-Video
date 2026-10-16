@@ -38,6 +38,11 @@ def intro(kind, topic, title, n_items=None, gh=None):
         days = _age_days(info.get("created_at") or raw.get("created_at"))
         lang = info.get("language") or raw.get("language")
         tag = f"OPEN SOURCE · {lang.upper()}" if lang and len(lang) <= 12 else "OPEN SOURCE"
+        tr = raw.get("trending")
+        if tr:  # GitHub's own Trending rank
+            today = tr.get("stars_today")
+            return {"tag": "No. 1 GITHUB REPO OF THE DAY" if tr["rank"] == 1 else f"No. {tr['rank']} ON GITHUB TRENDING",
+                    "title": f"+{short_num(today)} stars today" if today else title.split("/")[-1], "sub": title}
         if stars and days and days <= 60:
             head = f"{short_num(stars)} stars in {days} day{'s' if days != 1 else ''}"
         elif stars:

@@ -18,6 +18,12 @@ SERIES = {
         "about": "Daily open-source AI and GitHub projects worth knowing. Follow for a new find every day.",
         "playlist": "Open-Source GitHub Finds",
     },
+    "trending": {
+        "keywords": ["GitHub trending", "trending GitHub repo", "GitHub repo of the day", "open source", "GitHub",
+                     "developer tools", "programming"],
+        "about": "The No. 1 trending GitHub repo, every day. Follow so you never miss what developers are starring.",
+        "playlist": "No. 1 GitHub Repo of the Day",
+    },
     "tools": {
         "keywords": ["AI tools", "best AI tools", "AI websites", "artificial intelligence", "AI apps",
                      "productivity", "tech tips"],
@@ -138,6 +144,12 @@ def title(c):
         opts = [hook]
     if k == "github" and name.lower() in hook.lower():
         opts.insert(0, hook)
+    tr = raw.get("trending") if k == "github" else None
+    if tr:  # GitHub's own Trending rank leads the title ("No. 1" only when it really was No. 1)
+        from .trending import label
+        desc = re.sub(r"\s+", " ", raw.get("description") or "").strip().rstrip(".")
+        lead = f"{label(tr['rank'])}: {name}"
+        opts = [f"{lead} | {desc}", f"{lead} | {_clip(desc, TITLE_MAX - len(lead) - 3)}", lead]
     return _fit(opts)
 
 
@@ -181,7 +193,7 @@ def youtube_description(c, links=None):
         parts.append(q[1])  # the engagement question
     if links:
         parts.append(links)
-    s = SERIES.get(k, SERIES["news"])
+    s = SERIES["trending"] if k == "github" and _raw(c).get("trending") else SERIES.get(k, SERIES["news"])
     parts.append(s["about"])
     if k == "sites":
         parts.append("For educational purposes only.")
@@ -208,6 +220,8 @@ def youtube_tags(c, budget=450):
         cand += [f"{name} online", f"{name} free", f"how to {name.lower()}"]
     elif k == "ranking":
         cand += [t["name"].split("/")[-1] for t in raw.get("tools", [])]
+    if k == "github" and raw.get("trending"):
+        cand += SERIES["trending"]["keywords"]
     cand += SERIES.get(k, SERIES["news"])["keywords"]
     cand += [h.lstrip("#") for h in hashtags(c, 10)]
     out, seen, used = [], set(), 0
@@ -293,7 +307,8 @@ def playlist_id(conn, token, k):
 def add_to_playlist(conn, token, c, video_id):
     from .http import request
     try:
-        pid = playlist_id(conn, token, kind_of(c))
+        k = "trending" if kind_of(c) == "github" and _raw(c).get("trending") else kind_of(c)
+        pid = playlist_id(conn, token, k)
         if not pid:
             return False
         body = {"snippet": {"playlistId": pid, "resourceId": {"kind": "youtube#video", "videoId": video_id}}}
