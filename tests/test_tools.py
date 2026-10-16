@@ -279,5 +279,21 @@ class ToolsTests(unittest.TestCase):
         self.assertGreater(mid(int(2.9 * motion.FPS))[1], 150)   # scene 3 shows the green page
 
 
+class ToolsRotationTests(unittest.TestCase):
+    def test_failed_category_does_not_block_the_next(self):
+        from pipeline import db
+        conn = db.connect(os.path.join(tempfile.mkdtemp(), "r.db"))
+        first, second = list(tools.CATALOG)[:2]
+        tried = []
+        old = tools.build
+        tools.build = lambda conn, cat, count=None: tried.append(cat) or (cat == second)
+        try:
+            self.assertEqual(tools.run(conn), 1)
+            self.assertEqual(tried, [first, second])
+            self.assertNotIn(first, tools.candidates(conn))  # failed: waits FAILED_RETRY_DAYS
+        finally:
+            tools.build = old
+
+
 if __name__ == "__main__":
     unittest.main()

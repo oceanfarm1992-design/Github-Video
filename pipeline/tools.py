@@ -132,12 +132,25 @@ def shows_in_browser(url):
     return browser.capture(url, assets, any_site=True, max_css_height=2600) is not None
 
 
-def next_category(conn):
-    """First catalog category not used in the last REUSE_DAYS days."""
+FAILED_RETRY_DAYS = 7  # a category that could not be verified waits this long, so it never blocks the others
+
+
+def candidates(conn):
+    """Catalog categories not used in the last REUSE_DAYS days and not failed recently, in catalog order."""
     cutoff = time.time() - REUSE_DAYS * 86400
     recent = {r["source"].split(":", 1)[1] for r in conn.execute(
         "SELECT source FROM topics WHERE source LIKE 'tools:%' AND updated_at>=?", (cutoff,))}
-    return next((k for k in CATALOG if k not in recent), None)
+    out = []
+    for k in CATALOG:
+        failed = float(db.kv_get(conn, f"tools_failed:{k}") or 0)
+        if k not in recent and time.time() - failed >= FAILED_RETRY_DAYS * 86400:
+            out.append(k)
+    return out
+
+
+def next_category(conn):
+    c = candidates(conn)
+    return c[0] if c else None
 
 
 def build(conn, category, count=None):
@@ -188,8 +201,13 @@ def run(conn):
         "('QUEUED','GENERATING','RENDERING','QC','READY','RETRY')").fetchone()[0]
     if waiting:
         return 0
-    cat = next_category(conn)
-    if not cat:
+    cats = candidates(conn)
+    if not cats:
         log.info("all tool categories used in the last %d days", REUSE_DAYS)
         return 0
-    return 1 if build(conn, cat) else 0
+    for cat in cats[:2]:  # at most two tries per run (each checks ~10 sites in a browser)
+        if build(conn, cat):
+            return 1
+        db.kv_set(conn, f"tools_failed:{cat}", str(time.time()))
+        log.info("tools category %s skipped for %d days", cat, FAILED_RETRY_DAYS)
+    return 0
