@@ -47,6 +47,25 @@ class TrendingTests(unittest.TestCase):
         self.assertTrue(seo.title(c).startswith("No. 2 on GitHub Trending Today: two"))
         self.assertEqual(storyboard.intro("github", dict(row), "new/two")["tag"], "No. 2 ON GITHUB TRENDING")
 
+    def test_queued_repo_is_upgraded_and_old_label_dropped(self):
+        conn = db.connect(os.path.join(tempfile.mkdtemp(), "u.db"))
+        conn.execute("INSERT INTO topics (id,title,source,url,raw,score,status) VALUES "
+                     "('q','old/one','github','u','{}',78,'QUEUED')")  # waiting in the normal queue
+        conn.execute("INSERT INTO topics (id,title,source,url,raw,score,status) VALUES ('y','x/y','github','u',?,100,'QUEUED')",
+                     (json.dumps({"trending": {"rank": 1, "date": "2000-01-01"}}),))
+        old = trending.get_json
+        trending.get_json = lambda conn, url, h=None, ttl=0: (api(url.split("/repos/")[1]), True)
+        try:
+            tid = trending.build(conn, trending.parse(PAGE))
+        finally:
+            trending.get_json = old
+        row = conn.execute("SELECT * FROM topics WHERE id=?", (tid,)).fetchone()
+        self.assertEqual((row["title"], json.loads(row["raw"])["trending"]["rank"]), ("old/one", 1))
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM topics WHERE title='old/one'").fetchone()[0], 1)
+        stale = conn.execute("SELECT raw, score FROM topics WHERE id='y'").fetchone()
+        self.assertNotIn("trending", json.loads(stale["raw"]))
+        self.assertEqual(stale["score"], 80)
+
     def test_number_one_label(self):
         raw = {"trending": {"rank": 1, "stars_today": 1204}, "description": "A fast tool."}
         c = {"tsource": "github", "title": "old/one", "hook": "h", "traw": json.dumps(raw), "hashtags": "[]",

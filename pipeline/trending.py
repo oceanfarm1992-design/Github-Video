@@ -5,6 +5,7 @@ queues it as the day's first GitHub video (score 100, so it takes the 9:05 slot)
 "stars today" are kept, so a title only says "No. 1" when GitHub ranked it No. 1.
 """
 import html
+import json
 import logging
 import re
 import time
@@ -32,12 +33,24 @@ def parse(page):
     return out
 
 
+MADE = ('GENERATING', 'RENDERING', 'QC', 'READY', 'RETRY', 'WAITING_FOR_API', 'PUBLISHED')
+
+
 def covered(conn, full):
-    """Already made into a video (or in the making)."""
-    return conn.execute(
-        "SELECT 1 FROM topics WHERE source='github' AND title=? AND status IN "
-        "('QUEUED','GENERATING','RENDERING','QC','READY','RETRY','WAITING_FOR_API','PUBLISHED')",
-        (full,)).fetchone() is not None
+    """Already made into a video (or in the making). A repo only waiting in the queue is upgraded instead."""
+    return conn.execute(f"SELECT 1 FROM topics WHERE source='github' AND title=? AND status IN {MADE}",
+                        (full,)).fetchone() is not None
+
+
+def demote_stale(conn, keep=None):
+    """A queued trending topic from another day (or replaced today) loses its label: "today" would be false."""
+    import json
+    for r in conn.execute("SELECT id, raw FROM topics WHERE source='github' AND status='QUEUED' AND raw LIKE '%\"trending\"%'"):
+        raw = json.loads(r["raw"] or "{}")
+        tr = raw.get("trending")
+        if tr and r["id"] != keep and (tr.get("date") != db.today() or keep):
+            raw.pop("trending")
+            conn.execute("UPDATE topics SET raw=?, score=80 WHERE id=?", (db.js(raw), r["id"]))
 
 
 def build(conn, entries, max_rank=10):
@@ -65,7 +78,8 @@ def build(conn, entries, max_rank=10):
         if raw["license"]:
             claims.append({"text": f"License: {raw['license']}.", "source": url})
         tid = db.sha(f"gh:{data['id']}")[:16]  # same id discover uses, so the repo is never made twice
-        conn.execute("DELETE FROM topics WHERE id=? AND status NOT IN ('PUBLISHED')", (tid,))
+        conn.execute(f"DELETE FROM topics WHERE (id=? OR (source='github' AND title=?)) AND status NOT IN {MADE}",
+                     (tid, full))
         conn.execute(
             """INSERT OR IGNORE INTO topics (id,title,source,url,github_url,repo_id,published_at,discovered_at,
             content_hash,raw,summary,claims,source_urls,score,confidence,status,updated_at)
@@ -73,6 +87,7 @@ def build(conn, entries, max_rank=10):
             (tid, full, "github", url, url, f"gh:{data['id']}", data["created_at"], db.now_iso(),
              db.sha((full + url).lower()), db.js(raw), data.get("description"), db.js(claims),
              db.js([url, URL]), 100, 100, "QUEUED", time.time()))
+        demote_stale(conn, keep=tid)
         log.info("No. %d trending today: %s (%s stars today)", rank, full, today)
         return tid
     log.warning("no new trending repo in the top %d today", max_rank)
@@ -80,10 +95,14 @@ def build(conn, entries, max_rank=10):
 
 
 def run(conn):
-    """Queue today's trending repo once a day."""
+    """Queue today's trending repo. Re-checked each run until today's pick is No. 1 or is being made."""
     key = f"trending:{db.today()}"
-    if db.kv_get(conn, key):
-        return 0
+    demote_stale(conn)
+    done = db.kv_get(conn, key)
+    if done:
+        r = conn.execute("SELECT raw, status FROM topics WHERE id=?", (done,)).fetchone()
+        if not r or r["status"] != "QUEUED" or (info(json.loads(r["raw"] or "{}")) or {}).get("rank") == 1:
+            return 0
     try:
         _, _, body = request(URL, headers={"Accept": "text/html", "User-Agent": "Mozilla/5.0"}, timeout=30)
         entries = parse(body.decode("utf-8", "replace"))
@@ -94,8 +113,12 @@ def run(conn):
         log.warning("trending page had no repositories (layout changed?)")
         return 0
     tid = build(conn, entries)
-    db.kv_set(conn, key, tid or "none")
+    db.kv_set(conn, key, tid or done or "none")
     return 1 if tid else 0
+
+
+def trending_queued(conn, tid):
+    return conn.execute("SELECT 1 FROM topics WHERE id=? AND status='QUEUED'", (tid,)).fetchone() is not None
 
 
 def info(row_or_raw):
