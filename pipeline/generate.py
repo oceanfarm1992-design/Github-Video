@@ -13,7 +13,7 @@ from .http import request
 log = logging.getLogger("generate")
 
 # USD per 1M tokens (input, output) for the default small model.
-PRICE = {"claude-haiku-4-5-20251001": (1.0, 5.0)}
+PRICE = {"claude-haiku-4-5-20251001": (1.0, 5.0), "claude-sonnet-5-5": (2.0, 10.0)}
 def pick_cta(row):
     if row["github_url"] or row["source"] == "github":
         return "GITHUB", row["github_url"] or row["url"]
@@ -81,40 +81,55 @@ def llm_rewrite(conn, row, claims):
         return None
     facts = [t for t in (clean_claim(c["text"]) for c in claims) if t]
     prompt = (
-        "Write a 35-second vertical-video script as JSON {\"hook\": str, \"beats\": [str, str, str]}. "
-        "The hook MUST be a question addressed to the viewer (start with 'Do you want', 'Want' or 'Looking for'), "
+        "Write a 35-second vertical-video script for developers scrolling Shorts, as JSON "
+        "{\"hooks\": [str, str, str], \"best\": int, \"beats\": [str, str, str]}. "
+        "Draft three different hooks, then set best to the index (0-2) of the one most likely to stop the scroll. "
+        "Each hook MUST be a question addressed to the viewer (start with 'Do you want', 'Want' or 'Looking for'), "
         "under 14 words, about the need this project meets, e.g. 'Do you want to build AI videos on your own PC?'. "
         "Only mention free, local or open-source if the facts say so. The first beat must introduce the project by "
-        "name ('Meet NAME, ...'). Use ONLY the facts below: never describe purpose, features, quality or "
-        "capabilities that are not stated in them, and never repeat the same fact. If the facts are thin, "
-        "return fewer beats (minimum 2). Do not add statistics or links. "
+        "name ('Meet NAME, ...'); the last beat should be the most useful or surprising fact. Use ONLY the facts "
+        "below: never describe purpose, features, quality or capabilities that are not stated in them, and never "
+        "repeat the same fact. Plain spoken English: short sentences, no filler words, no hype. If the facts are "
+        "thin, return fewer beats (minimum 2). Do not add statistics or links. "
         "Each beat under 22 words.\nTitle: " + row["title"] + "\nFacts:\n- " + "\n- ".join(facts))
-    key = db.sha(config.LLM_MODEL + prompt)
+    model = config.SCRIPT_MODEL
+    key = db.sha(model + prompt)
     cached = conn.execute("SELECT response FROM llm_cache WHERE key=?", (key,)).fetchone()
     if cached:
         return json.loads(cached["response"])
-    pin, pout = PRICE.get(config.LLM_MODEL, (3.0, 15.0))
-    est = (len(prompt) / 4 * pin + 400 * pout) / 1e6
+    pin, pout = PRICE.get(model, (3.0, 15.0))
+    est = (len(prompt) / 4 * pin + 1500 * pout) / 1e6
     calls, usd = _budget()
     if calls >= config.MAX_LLM_CALLS_PER_DAY or usd + est > config.DAILY_AI_BUDGET_USD:
         log.info("LLM budget reached; using template for %s", row["title"])
         return None
-    body = json.dumps({"model": config.LLM_MODEL, "max_tokens": 400,
-                       "messages": [{"role": "user", "content": prompt}]}).encode()
-    _, _, resp = request("https://api.anthropic.com/v1/messages", data=body, method="POST", headers={
-        "x-api-key": config.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01",
-        "content-type": "application/json"})
+    req = {"model": model, "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}
+    headers = {"x-api-key": config.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01",
+               "content-type": "application/json"}
+    if model.startswith("claude-sonnet-5"):
+        # a short JSON answer needs no thinking; a safety decline is retried on another model server-side
+        req.update(thinking={"type": "between_tools"}, output_config={"effort": "medium"}, fallbacks="default")
+        headers["anthropic-beta"] = "server-side-fallback-2026-07-01"
+    _, _, resp = request("https://api.anthropic.com/v1/messages", data=json.dumps(req).encode(), method="POST",
+                         headers=headers)
     r = json.loads(resp)
     u = r.get("usage", {})
     cost = (u.get("input_tokens", 0) * pin + u.get("output_tokens", 0) * pout) / 1e6
     conn.execute("INSERT INTO spend VALUES (?,1,?) ON CONFLICT(day) DO UPDATE SET calls=calls+1, usd=usd+?",
                  (db.today(), cost, cost))
-    text = r["content"][0]["text"]
-    m = re.search(r"\{.*\}", text, re.S)
-    out = json.loads(m.group(0))
-    if not (isinstance(out.get("hook"), str) and isinstance(out.get("beats"), list) and out["beats"]):
+    if r.get("stop_reason") == "refusal":
         return None
-    if not out["hook"].strip().endswith("?"):
+    text = "".join(b.get("text", "") for b in r.get("content", []) if b.get("type") == "text")
+    m = re.search(r"\{.*\}", text, re.S)
+    if not m:
+        return None
+    out = json.loads(m.group(0))
+    hooks = (out.get("hooks") if isinstance(out.get("hooks"), list) else [out.get("hook")]) or [None]
+    best = out.get("best") if isinstance(out.get("best"), int) and 0 <= out["best"] < len(hooks) else 0
+    # the model's pick first; any other draft that is a question if it is not
+    ranked = [hooks[best]] + hooks[:best] + hooks[best + 1:]
+    out["hook"] = next((h for h in ranked if isinstance(h, str) and h.strip().endswith("?")), None)
+    if not (isinstance(out.get("hook"), str) and isinstance(out.get("beats"), list) and out["beats"]):
         return None  # the hook must be a question; fall back to the template
     result = {"hook": out["hook"], "beats": [str(b) for b in out["beats"][:max(2, min(4, len(facts) + 1))]]}
     invented = numbers(" ".join([result["hook"]] + result["beats"])) - numbers(row["title"] + " " + " ".join(facts))

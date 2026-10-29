@@ -34,7 +34,8 @@ def font(size):
 @lru_cache(maxsize=16)
 def mono(size):
     from PIL import ImageFont
-    for name in ("DejaVuSansMono-Bold.ttf", "consolab.ttf", "LiberationMono-Bold.ttf", "Courier New Bold.ttf"):
+    from .motion import FONT_DIR
+    for name in (str(FONT_DIR / "JetBrainsMono-Bold.ttf"), "DejaVuSansMono-Bold.ttf", "consolab.ttf", "LiberationMono-Bold.ttf", "Courier New Bold.ttf"):
         try:
             return ImageFont.truetype(name, size)
         except OSError:

@@ -401,8 +401,9 @@ def render(m, script, out_dir):
     enc = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
            "-r", str(FPS), "-i", "-", "-i", str(audio), "-t", f"{total:.3f}",
            "-vf", f"fade=t=out:st={total - 1:.3f}:d=1,format=yuv420p", "-af", af,
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-g", str(FPS * 4),
-           "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(mp4)]
+           # "fast", not "slow": a 15-minute video must stay well inside the run's time limit
+           "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-profile:v", "high", "-g", str(FPS * 4),
+           "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(mp4)]
     proc = subprocess.Popen(enc, stdin=subprocess.PIPE)
     try:
         for frame in Frames(m, script, segs, total, theme):

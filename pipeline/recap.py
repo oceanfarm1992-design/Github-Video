@@ -210,7 +210,7 @@ def render(content, topic, mp4):
            f"{motion.W}x{motion.H}", "-r", str(motion.FPS), "-i", "-"]
     enc += ["-i", str(audio)] if audio else ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
     enc += ["-t", f"{total:.3f}", "-vf", f"fade=t=out:st={total - 0.5:.3f}:d=0.5,format=yuv420p", "-af", afilter,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
+            *r.VIDEO_ENC,
             "-movflags", "+faststart", str(mp4)]
     proc = subprocess.Popen(enc, stdin=subprocess.PIPE)
     try:

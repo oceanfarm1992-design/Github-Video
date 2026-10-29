@@ -35,6 +35,10 @@ MUSIC_VOLUME = os.environ.get("MUSIC_VOLUME", "0.22")  # music level before duck
 
 
 LOUDNESS = "I=-14:TP=-1.5:LRA=11"  # the level Reels, Shorts and TikTok play at
+# final encode: platforms re-compress every upload, so start from a clean master (one Short a day: time is cheap)
+VIDEO_ENC = ["-c:v", "libx264", "-preset", "slow", "-crf", "18", "-profile:v", "high",
+             "-c:a", "aac", "-b:a", "192k"]
+MID_AUDIO = ["-c:a", "aac", "-b:a", "256k"]  # intermediate mixes: high enough that re-encoding loses nothing audible
 
 
 def loudnorm(audio):
@@ -58,7 +62,7 @@ def mix_sfx(audio, track, total, dest):
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(audio), "-i", str(track), "-filter_complex",
            f"[1:a]aresample=44100,volume={vol}[s];[0:a]aresample=44100[v];"
            "[v][s]amix=inputs=2:duration=first:normalize=0[out]", "-map", "[out]",
-           "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "128k", str(dest)]
+           "-t", f"{total:.3f}", *MID_AUDIO, str(dest)]
     subprocess.run(cmd, check=True, timeout=120)
     return dest
 
@@ -87,10 +91,10 @@ def mix_music(voice, track, total, dest, cues=()):
                f"[1:a]{mus}[m];[0:a]aresample=44100,asplit=2[v][sc];"
                "[m][sc]sidechaincompress=threshold=0.02:ratio=6:attack=20:release=400[md];"
                "[v][md]amix=inputs=2:duration=first:normalize=0[aout]",
-               "-map", "[aout]", "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "160k", str(dest)]
+               "-map", "[aout]", "-t", f"{total:.3f}", *MID_AUDIO, str(dest)]
     else:
         cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(track), "-af", mus,
-               "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "160k", str(dest)]
+               "-t", f"{total:.3f}", *MID_AUDIO, str(dest)]
     subprocess.run(cmd, check=True, timeout=300)
     return dest
 
@@ -406,7 +410,7 @@ def render(content, topic=None, conn=None):
             f"apad=whole_dur={scenes[i][1]:.3f}[a{i}];" for i in range(len(clips)))
         fc = (parts + "".join(f"[a{i}]" for i in range(len(clips)))
               + f"concat=n={len(clips)}:v=0:a=1,adelay={int(visuals.INTRO * 1000)}:all=1,apad[aout]")
-        cmd += ["-filter_complex", fc, "-map", "[aout]", "-t", f"{total:.3f}", "-c:a", "aac", "-b:a", "128k", str(audio)]
+        cmd += ["-filter_complex", fc, "-map", "[aout]", "-t", f"{total:.3f}", *MID_AUDIO, str(audio)]
         subprocess.run(cmd, check=True, timeout=300)
 
     # 2) lay out the video: fills the cues (transitions, call to action, end card) for the sound design
@@ -439,8 +443,7 @@ def render(content, topic=None, conn=None):
            "-r", str(motion.FPS), "-i", "-"]
     enc += ["-i", str(audio)] if audio else ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
     enc += ["-t", f"{total:.3f}", "-vf", fade, "-af", afilter,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart", str(mp4)]
+            *VIDEO_ENC, "-movflags", "+faststart", str(mp4)]
     proc = subprocess.Popen(enc, stdin=subprocess.PIPE)
     try:
         proc.stdin.write(first)

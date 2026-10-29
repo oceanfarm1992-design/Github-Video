@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 from functools import lru_cache
+from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
@@ -41,9 +42,12 @@ def ease_in_out(t):
 
 
 # ----------------------------------------------------------------- assets
+FONT_DIR = Path(__file__).resolve().parent / "fonts"  # bundled (SIL Open Font License): same look on every runner
+
+
 @lru_cache(maxsize=64)
 def font(size):
-    for name in ("DejaVuSans-Bold.ttf", "arialbd.ttf", "Arial Bold.ttf", "LiberationSans-Bold.ttf"):
+    for name in (str(FONT_DIR / "Inter-Bold.ttf"), "DejaVuSans-Bold.ttf", "arialbd.ttf", "Arial Bold.ttf", "LiberationSans-Bold.ttf"):
         try:
             return ImageFont.truetype(name, size)
         except OSError:

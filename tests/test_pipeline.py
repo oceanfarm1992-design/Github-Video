@@ -195,6 +195,22 @@ class Tests(unittest.TestCase):
         finally:
             config.ANTHROPIC_API_KEY, config.DAILY_AI_BUDGET_USD = "", old
 
+    def test_llm_picks_the_best_hook_that_is_a_question(self):
+        answer = {"hooks": ["Want a faster build?", "Meet box.", "Looking for a build tool?"], "best": 1,
+                  "beats": ["Meet box, a build tool.", "It builds things fast."]}
+        resp = json.dumps({"stop_reason": "end_turn", "usage": {"input_tokens": 300, "output_tokens": 90},
+                           "content": [{"type": "thinking", "thinking": ""},
+                                       {"type": "text", "text": json.dumps(answer)}]})
+        config.ANTHROPIC_API_KEY = "k"
+        try:
+            with mock.patch.object(generate, "_budget", return_value=(0, 0.0)), \
+                 mock.patch.object(generate, "request", return_value=(200, {}, resp)) as req:
+                out = generate.llm_rewrite(self.conn, {"title": "a/box"}, [{"text": "box builds things fast."}])
+            self.assertEqual(out["hook"], "Want a faster build?")  # pick 1 is not a question: first one that is
+            self.assertEqual(json.loads(req.call_args.kwargs["data"])["model"], config.SCRIPT_MODEL)
+        finally:
+            config.ANTHROPIC_API_KEY = ""
+
     def test_keyword_match_is_whole_word_and_case_insensitive(self):
         self.assertTrue(engage.matches("github please!", "GITHUB"))
         self.assertTrue(engage.matches("Link? GITHUB", "GITHUB"))
