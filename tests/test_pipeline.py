@@ -4,6 +4,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -45,6 +46,15 @@ class Tests(unittest.TestCase):
         db.set_status(self.conn, tid, "SKIPPED", "irrelevant")
         filt.run(self.conn)
         self.assertEqual(self.conn.execute("SELECT status FROM topics").fetchone()[0], "FILTERED")
+
+    def test_daily_rotation_cycles_one_series_per_day(self):
+        import datetime as d
+        with mock.patch.object(generate.config, "DAILY_ROTATION", "github,tools,sites"):
+            kinds = [generate.kind_today(d.date(2026, 11, 1) + d.timedelta(days=i)) for i in range(6)]
+            self.assertEqual(kinds[:3], kinds[3:])
+            self.assertEqual(sorted(kinds[:3]), ["github", "sites", "tools"])
+        with mock.patch.object(generate.config, "DAILY_ROTATION", ""):
+            self.assertIsNone(generate.kind_today())
 
     def test_daily_quota_picks_two_github_and_two_news(self):
         mk = lambda src, sc: {"source": src, "score": sc}

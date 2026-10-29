@@ -1,5 +1,6 @@
 """GENERATE: deterministic template first; optional cheap-LLM rewrite under a hard budget."""
 import calendar
+import datetime
 import json
 import logging
 import os
@@ -158,6 +159,15 @@ def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0, sites_room=0,
 ROTATION = ("github", "tools", "github", "sites", "promo")  # one video per slot through the day
 
 
+def kind_today(today=None):
+    """The series whose turn it is today (DAILY_ROTATION, one step per day); None = no rotation."""
+    seq = [k.strip() for k in config.DAILY_ROTATION.split(",") if k.strip() in ROTATION]
+    if not seq:
+        return None
+    today = today or datetime.datetime.now(datetime.timezone.utc).date()
+    return seq[today.toordinal() % len(seq)]
+
+
 def by_rotation(rows, done_today):
     """Orders picked rows so the day's slots alternate series: the next due kind first, then the rest."""
     order = ROTATION[done_today % len(ROTATION):] + ROTATION
@@ -269,12 +279,16 @@ def run(conn):
     wanted = [s.strip() for s in os.environ.get("GENERATE_SOURCES", "").split(",") if s.strip()]
     if wanted:  # e.g. "rss,hn,arxiv" to make news-only videos
         rows = [r for r in rows if r["source"].split(":")[0] in wanted]
-    rows = pick(rows, config.DAILY_GITHUB_VIDEOS - videos_today(conn, "github"),
+    turn = kind_today()   # with a rotation only today's series has room
+
+    def quota(k, n):
+        return (n if turn in (None, k) else 0) - videos_today(conn, k)
+    rows = pick(rows, quota("github", config.DAILY_GITHUB_VIDEOS),
                 config.DAILY_NEWS_VIDEOS - videos_today(conn, "news"),
                 config.GENERATE_SCORE, min(config.GENERATE_SCORE, config.GENERATE_SCORE_NEWS),
-                config.DAILY_TOOLS_VIDEOS - videos_today(conn, "tools"),
-                config.DAILY_SITES_VIDEOS - videos_today(conn, "sites"),
-                config.DAILY_PROMO_VIDEOS - videos_today(conn, "promo"),
+                quota("tools", config.DAILY_TOOLS_VIDEOS),
+                quota("sites", config.DAILY_SITES_VIDEOS),
+                quota("promo", config.DAILY_PROMO_VIDEOS),
                 1 - videos_today(conn, "ranking"))
     rows = by_rotation(rows, videos_today(conn))[:room]
     n = 0

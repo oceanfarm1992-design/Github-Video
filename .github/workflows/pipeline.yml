@@ -57,15 +57,16 @@ jobs:
       STORIES: ${{ vars.STORIES || '1' }}
       DAILY_GITHUB_VIDEOS: ${{ vars.DAILY_GITHUB_VIDEOS || '1' }}
       DAILY_NEWS_VIDEOS: ${{ vars.DAILY_NEWS_VIDEOS || '0' }}
-      DAILY_SITES_VIDEOS: ${{ vars.DAILY_SITES_VIDEOS || '0' }}
+      DAILY_SITES_VIDEOS: ${{ vars.DAILY_SITES_VIDEOS || '1' }}
       SITES_PER_VIDEO: ${{ vars.SITES_PER_VIDEO || '1' }}
-      DAILY_TOOLS_VIDEOS: ${{ vars.DAILY_TOOLS_VIDEOS || '0' }}
-      DAILY_PROMO_VIDEOS: ${{ vars.DAILY_PROMO_VIDEOS || '0' }}
+      DAILY_TOOLS_VIDEOS: ${{ vars.DAILY_TOOLS_VIDEOS || '1' }}
+      DAILY_PROMO_VIDEOS: ${{ vars.DAILY_PROMO_VIDEOS || '1' }}
       TOOLS_PER_VIDEO: ${{ vars.TOOLS_PER_VIDEO || '10' }}
       RANKING_WEEKDAY: ${{ vars.RANKING_WEEKDAY || '6' }}
       RECAP_WEEKDAY: ${{ vars.RECAP_WEEKDAY || '5' }}
       YT_FIRST_COMMENT: ${{ vars.YT_FIRST_COMMENT || '1' }}
       MUSIC_FLAVOR: ${{ vars.MUSIC_FLAVOR }}
+      DAILY_ROTATION: ${{ vars.DAILY_ROTATION || 'github,tools,github,sites,promo' }}
       LONG_EVERY_DAYS: ${{ vars.LONG_EVERY_DAYS || '5' }}
       LONG_START: ${{ vars.LONG_START || '2026-11-01' }}
       LONG_FORMATS: ${{ vars.LONG_FORMATS || 'github,tools,sites' }}
