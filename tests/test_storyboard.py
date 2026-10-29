@@ -42,11 +42,15 @@ class StoryboardTests(unittest.TestCase):
         self.assertEqual(it["title"], "box")
 
     def test_endcards_promise_only_what_the_schedule_delivers(self):
-        sites = storyboard.endcard("sites", {"raw": json.dumps({"part": 3})})
-        self.assertEqual(sites["line"], "Part 4 tomorrow")
+        old = storyboard.config.DAILY_SITES_VIDEOS
+        storyboard.config.DAILY_SITES_VIDEOS = 1
+        try:
+            sites = storyboard.endcard("sites", {"raw": json.dumps({"part": 3})})
+            self.assertEqual(sites["line"], "Part 4 tomorrow")
+        finally:
+            storyboard.config.DAILY_SITES_VIDEOS = old
         tools = storyboard.endcard("tools", {"raw": "{}"}, 7)
         self.assertEqual(tools["options"], [str(i) for i in range(1, 8)])
-        old = storyboard.config.DAILY_SITES_VIDEOS
         storyboard.config.DAILY_SITES_VIDEOS = 0
         try:
             self.assertIsNone(storyboard.endcard("sites", {"raw": "{}"})["line"])

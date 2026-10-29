@@ -29,14 +29,27 @@ class ScheduleTests(unittest.TestCase):
         with mock.patch.object(longform.config, "LONG_SCHEDULE", ""):
             self.assertEqual(longform.schedule(), {})
 
+    def test_every_five_days_rotating_formats(self):
+        import datetime as d
+        with mock.patch.object(longform.config, "LONG_EVERY_DAYS", 5), \
+             mock.patch.object(longform.config, "LONG_START", "2026-11-01"), \
+             mock.patch.object(longform.config, "LONG_FORMATS", "github,tools,sites"):
+            got = {d.date(2026, 11, 1) + d.timedelta(days=i): longform.format_today(d.date(2026, 11, 1) + d.timedelta(days=i))
+                   for i in range(16)}
+            self.assertEqual([v for v in got.values() if v], ["github", "tools", "sites", "github"])
+            self.assertEqual([k.day for k, v in got.items() if v], [1, 6, 11, 16])
+            self.assertIsNone(longform.format_today(d.date(2026, 10, 31)))
+
     def test_only_the_first_short_of_the_series_skips(self):
         conn = db.connect(":memory:")
-        with mock.patch.object(longform, "format_today", return_value="github"):
+        with mock.patch.object(longform.config, "LONG_EVERY_DAYS", 0), \
+             mock.patch.object(longform, "format_today", return_value="github"):
             self.assertTrue(longform.skip_short(conn, {"id": 7, "tsource": "github"}))
             self.assertTrue(longform.skip_short(conn, {"id": 7, "tsource": "github"}))   # same Short, retried
             self.assertFalse(longform.skip_short(conn, {"id": 8, "tsource": "github"}))  # the second GitHub Short
             self.assertFalse(longform.skip_short(conn, {"id": 9, "tsource": "tools:video"}))
-        with mock.patch.object(longform, "format_today", return_value=None):
+        with mock.patch.object(longform.config, "LONG_EVERY_DAYS", 0), \
+             mock.patch.object(longform, "format_today", return_value=None):
             self.assertFalse(longform.skip_short(db.connect(":memory:"), {"id": 1, "tsource": "github"}))
 
 

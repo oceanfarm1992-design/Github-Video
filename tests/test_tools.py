@@ -287,12 +287,14 @@ class ToolsRotationTests(unittest.TestCase):
         tried = []
         old = tools.build
         tools.build = lambda conn, cat, count=None: tried.append(cat) or (cat == second)
+        old_daily, tools.config.DAILY_TOOLS_VIDEOS = tools.config.DAILY_TOOLS_VIDEOS, 1
         try:
             self.assertEqual(tools.run(conn), 1)
             self.assertEqual(tried, [first, second])
             self.assertNotIn(first, tools.candidates(conn))  # failed: waits FAILED_RETRY_DAYS
         finally:
             tools.build = old
+            tools.config.DAILY_TOOLS_VIDEOS = old_daily
 
 
 if __name__ == "__main__":

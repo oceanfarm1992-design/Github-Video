@@ -19,25 +19,29 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5-20251001")
 DAILY_AI_BUDGET_USD = _f("DAILY_AI_BUDGET_USD", 1.0)
 MAX_LLM_CALLS_PER_DAY = _i("MAX_LLM_CALLS_PER_DAY", 100)
-MAX_VIDEOS_PER_DAY = _i("MAX_VIDEOS_PER_DAY", 5)
+MAX_VIDEOS_PER_DAY = _i("MAX_VIDEOS_PER_DAY", 1)
 MAX_RENDERS_PER_TOPIC = _i("MAX_RENDERS_PER_TOPIC", 2)
 MIN_TOPIC_SCORE = _i("MIN_TOPIC_SCORE", 65)
 GENERATE_SCORE = _i("GENERATE_SCORE", 75)  # GitHub bar; real scores top out near 80
 PRIORITY_SCORE = _i("PRIORITY_SCORE", 90)
 # Daily mix: N GitHub-project videos + N AI-news videos (news items score lower, so a lower bar).
-DAILY_GITHUB_VIDEOS = _i("DAILY_GITHUB_VIDEOS", 2)
+DAILY_GITHUB_VIDEOS = _i("DAILY_GITHUB_VIDEOS", 1)
 DAILY_NEWS_VIDEOS = _i("DAILY_NEWS_VIDEOS", 0)   # AI news replaced by the websites series (set 1 to bring it back)
-DAILY_SITES_VIDEOS = _i("DAILY_SITES_VIDEOS", 1)   # "Websites that feel illegal to know - Part N"
+DAILY_SITES_VIDEOS = _i("DAILY_SITES_VIDEOS", 0)   # "Websites that feel illegal to know - Part N"
 SITES_PER_VIDEO = _i("SITES_PER_VIDEO", 1)  # 1 = one site per video, explored section by section
-DAILY_TOOLS_VIDEOS = _i("DAILY_TOOLS_VIDEOS", 1)   # "N AI tools for <category>" videos
-DAILY_PROMO_VIDEOS = _i("DAILY_PROMO_VIDEOS", 1)   # one Privacy PDF Tools tool per day
+DAILY_TOOLS_VIDEOS = _i("DAILY_TOOLS_VIDEOS", 0)   # "N AI tools for <category>" videos
+DAILY_PROMO_VIDEOS = _i("DAILY_PROMO_VIDEOS", 0)   # one Privacy PDF Tools tool per day
 TOOLS_PER_VIDEO = _i("TOOLS_PER_VIDEO", 10)
 # weekly formats (0 = Monday ... 6 = Sunday; -1 turns the format off)
 RANKING_WEEKDAY = _i("RANKING_WEEKDAY", 6)  # "Top 5 new GitHub repos this week", ranked by stars
 RANKING_SIZE = _i("RANKING_SIZE", 5)
 RECAP_WEEKDAY = _i("RECAP_WEEKDAY", 5)      # 30-second recap of the week's videos
 YT_FIRST_COMMENT = _i("YT_FIRST_COMMENT", 1)  # post the link as the first YouTube comment
-# long videos (YouTube + Facebook): weekday:format pairs; empty turns them off
+# long videos (YouTube + Facebook): one every LONG_EVERY_DAYS days, counted from LONG_START, rotating through
+# LONG_FORMATS. LONG_EVERY_DAYS=0 falls back to LONG_SCHEDULE (weekday:format pairs; empty turns them off).
+LONG_EVERY_DAYS = _i("LONG_EVERY_DAYS", 5)
+LONG_START = os.environ.get("LONG_START", "2026-11-01")
+LONG_FORMATS = os.environ.get("LONG_FORMATS", "github,tools,sites")
 LONG_SCHEDULE = os.environ.get("LONG_SCHEDULE", "0:github,2:tools,4:sites")
 # at most this many videos per produce run; two daily produce slots catch up if GitHub drops one schedule
 MAX_VIDEOS_PER_RUN = _i("MAX_VIDEOS_PER_RUN", 1)

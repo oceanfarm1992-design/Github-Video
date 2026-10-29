@@ -1,11 +1,12 @@
-"""LONG VIDEOS: 8-15 minute 16:9 explainers for YouTube and Facebook, three a week in rotation.
+"""LONG VIDEOS: 8-15 minute 16:9 explainers for YouTube and Facebook, one every LONG_EVERY_DAYS days (5).
 
-Default schedule (LONG_SCHEDULE): Monday a GitHub repo deep dive, Wednesday an AI tools full review,
-Friday a websites full tour. On those days one Short of the same series skips YouTube and Facebook, so
-those two get 4 Shorts + 1 long video. The produce run starts the `long` stage as a separate workflow run
+The formats rotate (LONG_FORMATS): a GitHub repo deep dive, an AI tools full review, a websites full tour,
+counted from LONG_START. With LONG_EVERY_DAYS=0 the old weekday schedule (LONG_SCHEDULE) applies, and on those
+days one Short of the same series skips YouTube and Facebook. The produce run starts the `long` stage as a separate workflow run
 (own queue, longer time limit); it collects real material, has Claude write a grounded chaptered script,
 renders, publishes and records the subject in Supabase.
 """
+import datetime
 import logging
 import time
 from pathlib import Path
@@ -27,14 +28,25 @@ def schedule():
     return out
 
 
-def format_today():
-    return schedule().get(time.gmtime().tm_wday)
+def format_today(today=None):
+    """Today's long-video format, or None. today: a datetime.date (default: today, UTC)."""
+    today = today or datetime.datetime.now(datetime.timezone.utc).date()
+    if config.LONG_EVERY_DAYS <= 0:
+        return schedule().get(today.weekday())
+    formats = [f.strip() for f in config.LONG_FORMATS.split(",") if f.strip() in FORMATS]
+    try:
+        n = (today - datetime.date.fromisoformat(config.LONG_START)).days
+    except ValueError:
+        return None
+    if not formats or n < 0 or n % config.LONG_EVERY_DAYS:
+        return None
+    return formats[(n // config.LONG_EVERY_DAYS) % len(formats)]
 
 
 def skip_short(conn, c):
     """True for the first Short of today's long-video series: it skips YouTube and Facebook."""
     fmt = format_today()
-    if not fmt or series_kind(c.get("tsource") or "") != fmt:
+    if config.LONG_EVERY_DAYS > 0 or not fmt or series_kind(c.get("tsource") or "") != fmt:
         return False
     key = f"long-skip:{db.today()}"
     row = conn.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
