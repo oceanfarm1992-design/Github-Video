@@ -28,6 +28,9 @@ STAGGER = 0.045      # s between word entrances
 STAGGER_TOTAL = 0.8  # the last word is in by this time, however long the line
 RISE = 0.32          # s for a word to rise through its line mask
 POP = 0.10           # extra scale on the word being spoken
+# "clean": the product fills the screen, short captions, no template decoration. "classic": the old look.
+STYLE = os.environ.get("VIDEO_STYLE", "clean")
+CLEAN = STYLE != "classic"
 
 
 # ---------------------------------------------------------------- easing
@@ -175,6 +178,63 @@ def draw_kinetic_text(img, text, ty, lt, active, active_since, alpha=1.0, count=
             x += ww + space
 
 
+CAPTION_SIZE = 92
+CAPTION_MAX_WORDS = 3
+
+
+def caption_chunks(words):
+    """Word indices in groups of up to 3, broken after punctuation: how an editor times captions."""
+    out, cur = [], []
+    for i, w in enumerate(words):
+        cur.append(i)
+        if len(cur) >= CAPTION_MAX_WORDS or w[-1] in ".,!?:;" or sum(len(words[j]) for j in cur) > 16:
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    return out
+
+
+@lru_cache(maxsize=512)
+def caption_sprite(words, theme_now):
+    """One caption chunk: big white words on a dark rounded box (reads on light and dark pages alike);
+    numbers and names in the series colour."""
+    size = CAPTION_SIZE
+    fnt = font(size)
+    line = " ".join(words)
+    while size > 48 and fnt.getlength(line) > W - 2 * MARGIN:
+        size -= 6
+        fnt = font(size)
+    pad_x, pad_y = size * 0.36, size * 0.2
+    top, bottom = fnt.getbbox(line)[1], fnt.getbbox(line)[3]
+    img = Image.new("RGBA", (int(fnt.getlength(line) + 2 * pad_x), int(bottom - top + 2 * pad_y)), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([0, 0, img.width - 1, img.height - 1], int(size * 0.28), fill=(10, 10, 14, 205))
+    x = pad_x
+    for w in words:
+        col = theme_now if is_emphasis(w) else (255, 255, 255)
+        d.text((x, pad_y - top), w, font=fnt, fill=col + (255,))
+        x += fnt.getlength(w + " ")
+    return img
+
+
+def draw_caption(img, text, starts, lt, cy, alpha=1.0, theme=None):
+    """The chunk being spoken, centred at y=cy; each new chunk pops in."""
+    words = text.split()
+    if not words or not starts or lt < starts[0]:
+        return
+    active = sum(1 for s_ in starts if lt >= s_) - 1
+    chunk = next(c for c in caption_chunks(words) if active <= c[-1])
+    spr = caption_sprite(tuple(words[i] for i in chunk), tuple(theme.now) if theme else COL_NOW)
+    if alpha < 0.999:
+        spr = spr.copy()
+        spr.putalpha(spr.getchannel("A").point(lambda v, k=alpha: int(v * k)))
+    since = lt - starts[chunk[0]]
+    scale = 0.86 + 0.14 * ease_out(since / 0.12) + 0.04 * math.exp(-max(0.0, since - 0.12) * 10)
+    from .visuals import paste_scaled
+    paste_scaled(img, spr, (W / 2, cy), scale)
+
+
 def word_starts(text, duration):
     """Approximate start time of each word within the narrated part (weighted by length)."""
     words = text.split()
@@ -238,45 +298,50 @@ class Panel:
     # scroll speed in output px/s (env SCROLL_SPEED); slower = more readable, longer pages scroll partway
     MAX_SPEED = max(60.0, min(600.0, float(os.environ.get("SCROLL_SPEED", "200") or 200)))
 
-    def __init__(self, page_path, url, height):
+    def __init__(self, page_path, url, height, width=CARD_W, chrome=True):
+        """chrome=False: full-bleed page, no browser bar or rounded corners (reads as a screen recording)."""
+        self.w = width
+        self.BAR = self.BAR if chrome else 0
         src = fx.grade(Image.open(page_path).convert("RGB"))
-        self.page = src.resize((CARD_W, int(src.height * CARD_W / src.width)), Image.LANCZOS)
+        self.page = src.resize((width, int(src.height * width / src.width)), Image.LANCZOS)
         self.h = height
         self.view_h = height - self.BAR
-        self.chrome = Image.new("RGB", (CARD_W, height), (13, 17, 23))
+        self.chrome = Image.new("RGB", (width, height), (13, 17, 23))
+        self.mask = Image.new("L", (width, height), 255 if not chrome else 0)
+        self.edge = fx.GOLD  # spotlight outline colour (the series theme sets it)
+        if not chrome:
+            return
         d = ImageDraw.Draw(self.chrome)
-        d.rectangle([0, 0, CARD_W, self.BAR], fill=(36, 41, 47))
+        d.rectangle([0, 0, width, self.BAR], fill=(36, 41, 47))
         for i, col in enumerate(((255, 95, 86), (255, 189, 46), (39, 201, 63))):
             d.ellipse([24 + i * 34, 25, 44 + i * 34, 45], fill=col)
-        d.rounded_rectangle([140, 14, CARD_W - 24, self.BAR - 14], 20, fill=(22, 27, 34))
+        d.rounded_rectangle([140, 14, width - 24, self.BAR - 14], 20, fill=(22, 27, 34))
         f = font(28)
         label = url.replace("https://", "")
-        while f.getlength(label) > CARD_W - 210 and len(label) > 8:
+        while f.getlength(label) > width - 210 and len(label) > 8:
             label = label[:-2]
         d.text((166, 20), label, font=f, fill=(201, 209, 217))
-        self.mask = Image.new("L", (CARD_W, height), 0)
-        ImageDraw.Draw(self.mask).rounded_rectangle([0, 0, CARD_W, height], 26, fill=255)
-        self.edge = fx.GOLD  # spotlight outline colour (the series theme sets it)
+        ImageDraw.Draw(self.mask).rounded_rectangle([0, 0, width, height], 26, fill=255)
 
     def frame(self, progress, span_seconds):
         dist = min(self.page.height - self.view_h, self.MAX_SPEED * span_seconds)
         y = int(max(0, dist) * progress)
         img = self.chrome.copy()
-        img.paste(self.page.crop((0, y, CARD_W, y + self.view_h)), (0, self.BAR))
+        img.paste(self.page.crop((0, y, self.w, y + self.view_h)), (0, self.BAR))
         return img
 
     def frame_at(self, cx, cy, zoom, spot=None, strength=0.0):
         """Camera view centred on (cx, cy) in page pixels, magnified by `zoom` (1 = full width).
         spot: (x, y, w, h) page-pixel box to spotlight (rest dimmed, gold outline), faded by `strength`."""
         if self.page.height < self.view_h:  # short page: pad so the camera window always fits
-            pad = Image.new("RGB", (CARD_W, self.view_h), (13, 17, 23))
+            pad = Image.new("RGB", (self.w, self.view_h), (13, 17, 23))
             pad.paste(self.page, (0, 0))
             self.page = pad
-        ww, hh = CARD_W / zoom, self.view_h / zoom
-        cx = min(max(cx, ww / 2), CARD_W - ww / 2)
+        ww, hh = self.w / zoom, self.view_h / zoom
+        cx = min(max(cx, ww / 2), self.w - ww / 2)
         cy = min(max(cy, hh / 2), self.page.height - hh / 2)
         x0, y0 = cx - ww / 2, cy - hh / 2
-        view = self.page.resize((CARD_W, self.view_h), Image.BILINEAR, box=(x0, y0, x0 + ww, y0 + hh))
+        view = self.page.resize((self.w, self.view_h), Image.BILINEAR, box=(x0, y0, x0 + ww, y0 + hh))
         if spot and strength > 0.01:
             sx, sy, sw, sh = spot
             r = [(sx - x0) * zoom - 14, (sy - y0) * zoom - 14, (sx + sw - x0) * zoom + 14, (sy + sh - y0) * zoom + 14]
@@ -292,10 +357,10 @@ class Panel:
         """Camera (cx, cy, zoom, spot) for a page box in CSS px; None = top of the page, no spotlight.
         Zoom is gentle (text at phone width fills the page, so a strong zoom would cut words off)."""
         if not box:
-            return CARD_W / 2, self.view_h / 2, 1.0, None
-        f = CARD_W / css_width
+            return self.w / 2, self.view_h / 2, 1.0, None
+        f = self.w / css_width
         x, y, w, h = (v * f for v in box)
-        zoom = min(CARD_W * 0.98 / max(w, 1), self.view_h * 0.6 / max(h, 1), 1.6)
+        zoom = min(self.w * 0.98 / max(w, 1), self.view_h * 0.6 / max(h, 1), 1.6)
         return x + w / 2, y + h / 2, max(1.12, zoom), (x, y, w, h)
 
 
@@ -361,7 +426,7 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
     n = round(total * FPS)
     env = envelope(audio_path, n)
     card = Card(card_path) if card_path else None
-    backdrop = fx.Backdrop(theme.bg_top, theme.bg_bot, accent=theme.accent)
+    backdrop = fx.Backdrop(theme.bg_top, theme.bg_bot, accent=theme.accent, plain=CLEAN)
     wm = None
     if watermark:
         f = font(34)
@@ -398,7 +463,9 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
     for i, k in enumerate(kinds):
         if k == "scroll" and scene_pages[i][0] not in panels:
             try:
-                panels[scene_pages[i][0]] = Panel(scene_pages[i][0], scene_pages[i][1] or "", ph)
+                panels[scene_pages[i][0]] = (Panel(scene_pages[i][0], scene_pages[i][1] or "", H, width=W,
+                                                   chrome=False) if CLEAN else
+                                             Panel(scene_pages[i][0], scene_pages[i][1] or "", ph))
                 panels[scene_pages[i][0]].edge = theme.edge
             except Exception:
                 panels[scene_pages[i][0]] = None
@@ -471,28 +538,30 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         if kinds[si] == "intro":  # the hook frame: also the cover, so nothing else on it
             visuals.draw_intro(img, intro, theme, lt)
             return img
-        if wm:
+        if wm and not CLEAN:
             img.paste(wm, ((W - wm.width) // 2, H - 120), wm)
         idraw = ImageDraw.Draw(img)
         if kinds[si] == "end":
             visuals.draw_endcard(img, endcard, theme, lt)
             return img
-        prog = max(0.0, min(1.0, (t - content_t0) / max(0.1, content_t1 - content_t0)))
-        bar = MARGIN + int((W - 2 * MARGIN) * prog)
-        idraw.rounded_rectangle([MARGIN - 3, BAR_Y - 3, bar + 3, BAR_Y + 15], 9,
-                                fill=tuple(c // 3 for c in theme.accent))  # glow
-        idraw.rectangle([MARGIN, BAR_Y, bar, BAR_Y + 12], fill=theme.accent)
+        if not CLEAN:  # progress bar
+            prog = max(0.0, min(1.0, (t - content_t0) / max(0.1, content_t1 - content_t0)))
+            bar = MARGIN + int((W - 2 * MARGIN) * prog)
+            idraw.rounded_rectangle([MARGIN - 3, BAR_Y - 3, bar + 3, BAR_Y + 15], 9,
+                                    fill=tuple(c // 3 for c in theme.accent))  # glow
+            idraw.rectangle([MARGIN, BAR_Y, bar, BAR_Y + 12], fill=theme.accent)
         whipped = trans[run_first[si]] is not None  # the transition is this visual's entrance
         since = t - run_start[si]
         e = 1.0 if whipped else ease_out(since / 0.6)      # entrance: rise + fade in
         label_x = MARGIN + (visuals.BADGE + 30 if logos[si] else 0)
-        if labels[si]:  # e.g. "#3/10  Runway": which item we are on, above the visual
+        if labels[si] and not CLEAN:  # e.g. "#3/10  Runway": which item we are on, above the visual
             idraw.text((label_x, 150 + int(30 * (1 - e))), labels[si], font=label_font,
                        fill=theme.edge if e >= 1 else tuple(int(c * e) for c in theme.edge))
 
         if kinds[si] == "card":
             c = card.frame(t / total, env[fi])
-            c = fx.light_sweep(c, (since - 0.6) / 0.8)
+            if not CLEAN:
+                c = fx.light_sweep(c, (since - 0.6) / 0.8)
             sc = 1.0 if whipped else 0.9 + 0.1 * fx.spring(since)  # punch-in with a soft overshoot
             m = card.mask.point(lambda v, e=e: int(v * e)) if e < 1 else card.mask
             if sc != 1.0:
@@ -526,13 +595,21 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
             else:
                 panel = vpanels[si]
                 pimg = panel.frame(max(0.0, visual_lt(si, t)))
-            pimg = fx.light_sweep(pimg, (since - 0.45) / 0.8)
-            m = panel.mask.point(lambda v, e=e: int(v * e)) if e < 1 else panel.mask
-            img.paste(pimg, (MARGIN, y_panel + int(70 * (1 - e))), m)
-            ty = y_panel + panel.h + 60
+            if CLEAN and kinds[si] == "scroll":  # the page is the whole frame
+                img.paste(pimg, (0, 0), panel.mask.point(lambda v, e=e: int(v * e)) if e < 1 else None)
+                ty = None
+            else:
+                if not CLEAN:
+                    pimg = fx.light_sweep(pimg, (since - 0.45) / 0.8)
+                m = panel.mask.point(lambda v, e=e: int(v * e)) if e < 1 else panel.mask
+                img.paste(pimg, (MARGIN, y_panel + int(70 * (1 - e))), m)
+                ty = y_panel + panel.h + 60
         else:
             ty = (H - text_height(text)) // 2
 
+        if labels[si] and CLEAN:  # e.g. "#3/10  Runway": a small tag, like an editor's lower third
+            tag = visuals.pill(labels[si], font(40), (0, 0, 0, 175), (255, 255, 255))
+            img.paste(tag, (MARGIN + (visuals.BADGE + 24 if logos[si] else 0), 150), tag)
         if logos[si]:  # the site's own icon pops in over the visual, then becomes the label badge
             try:
                 visuals.draw_logo(img, logos[si], visual_lt(si, t) - 0.05, (W / 2, y_panel + ph / 2),
@@ -542,8 +619,12 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         if text:
             active = sum(1 for s_ in starts[si] if lt >= s_) - 1 if lt >= starts[si][0] else -1
             fade_out = max(0.0, min(1.0, 1 - ease_in_out((lt - (b - a - 0.25)) / 0.25)))
-            draw_kinetic_text(img, text, ty, lt, active, starts[si][active] if active >= 0 else 0.0, fade_out,
-                              count=True, theme=theme)
+            if CLEAN:
+                cy = int(H * 0.72) if ty is None else (H // 2 if kinds[si] == "text" else min(H - 420, ty + 90))
+                draw_caption(img, text, starts[si], lt, cy, fade_out, theme)
+            else:
+                draw_kinetic_text(img, text, ty, lt, active, starts[si][active] if active >= 0 else 0.0, fade_out,
+                                  count=True, theme=theme)
         if disclaimer and content_t0 <= t < content_t0 + 2.4:  # small note for the first ~2 s, not spoken
             a_ = 1 - ease_in_out((t - content_t0 - 1.8) / 0.6)
             if a_ > 0:
@@ -551,6 +632,8 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
                 dw = df.getlength(disclaimer)
                 col = tuple(int(c * a_ + bc * (1 - a_)) for c, bc in zip((210, 215, 230), theme.bg_bot))
                 ImageDraw.Draw(img).text(((W - dw) / 2, H - 190), disclaimer, font=df, fill=col)
+        if wm and CLEAN:  # brand mark: small, top right, above the page
+            img.paste(wm, (W - MARGIN - wm.width, 150), wm)
         return img
 
     frozen = None  # (scene, image): the outgoing shot of the current transition, held on its last frame
@@ -573,9 +656,9 @@ def frames(scenes, card_path=None, audio_path=None, watermark=None, page_path=No
         else:
             img = compose(t, si, fi)
         dx = dy = 0
-        for at, amp in impacts:
+        for at, amp in ([] if CLEAN else impacts):
             ox, oy = fx.shake(t - at, amp, seed=int(at * 10))
             dx, dy = dx + ox, dy + oy
         if dx or dy:
             img = ImageChops.offset(img, dx, dy)
-        yield fx.vignette(img).tobytes()
+        yield (img if CLEAN else fx.vignette(img)).tobytes()

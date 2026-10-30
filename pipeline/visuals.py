@@ -146,13 +146,21 @@ def _title_layer(title, emph):
 
 def draw_intro(img, intro, theme, lt):
     """intro: {"tag", "title", "sub"}. Complete at lt=0 (the cover); then a punch settles it."""
+    from .motion import CLEAN
     cy = 900
-    g = glow(theme.accent)
-    img.paste(g, ((W - g.width) // 2, cy - g.height // 2), g)
+    if not CLEAN:
+        g = glow(theme.accent)
+        img.paste(g, ((W - g.width) // 2, cy - g.height // 2), g)
     title = _title_layer(intro["title"], theme.emph)
     s = 1 + 0.09 * (1 - fx.spring(lt * 1.3))
     paste_scaled(img, title, (W / 2, cy), s)
     top, bottom = cy - title.height * s / 2, cy + title.height * s / 2
+    if CLEAN:  # just the words: no tag, no underline bar
+        if intro.get("sub"):
+            f = font(52)
+            for i, line in enumerate(wrap(intro["sub"], f, CARD_W)[:2]):
+                centered(ImageDraw.Draw(img), bottom + 40 + i * 66, line, f, theme.now)
+        return
     tag = pill(intro.get("tag") or theme.tag, font(34), theme.accent + (255,), (10, 10, 14), spacing=5)
     img.paste(tag, ((W - tag.width) // 2, int(top - tag.height - 40)), tag)
     d = ImageDraw.Draw(img)
@@ -177,7 +185,21 @@ ENDCARD = 2.2  # s
 
 def draw_endcard(img, end, theme, lt):
     """end: {"question", "options", "line"}: comment poll, FOLLOW button, what comes next."""
+    from .motion import CLEAN
     d = ImageDraw.Draw(img)
+    if CLEAN:  # one question, the follow button, what comes next: no poll card or chips
+        a = ease_out(lt / 0.35)
+        qf = font(64)
+        for i, line in enumerate(wrap(end["question"], qf, CARD_W)[:2]):
+            centered(d, 640 + int(30 * (1 - a)) + i * 80, line, qf, tuple(int(255 * a) for _ in range(3)))
+        k = fx.spring(lt - 0.35)
+        if k > 0:
+            btn = pill("+  FOLLOW", font(62), theme.accent + (255,), (10, 10, 14), pad_x=64, height=124)
+            paste_scaled(img, btn, (W / 2, 980), min(1.0, k))
+        if end.get("line") and lt > 0.7:
+            a = ease_out((lt - 0.7) / 0.4)
+            centered(d, 1100, end["line"], font(46), tuple(int(c * a + 30 * (1 - a)) for c in (220, 225, 235)))
+        return
     # poll card
     e = fx.spring(lt * 1.2)
     opts = end.get("options") or []
@@ -445,7 +467,9 @@ class TermPanel(_Panel):
         if cursor and int(lt * 2.4) % 2 == 0:
             cx, cy = cursor
             d.rectangle([cx + 2, cy + 4, cx + self.f.getlength("m"), cy + self.f.size + 4], fill=self.theme.accent)
-        centered(d, self.h - 70, "From the project's README", font(28), (110, 118, 135), width=CARD_W)
+        from .motion import CLEAN
+        if not CLEAN:
+            centered(d, self.h - 70, "From the project's README", font(28), (110, 118, 135), width=CARD_W)
         return img
 
 

@@ -46,7 +46,8 @@ class Backdrop:
     CELL = 90
     GRID_SPEED = 0.6  # px per frame
 
-    def __init__(self, top=(14, 16, 28), bottom=(44, 48, 72), seed=7, accent=ACCENT, size=(W, H)):
+    def __init__(self, top=(14, 16, 28), bottom=(44, 48, 72), seed=7, accent=ACCENT, size=(W, H), plain=False):
+        """plain: gradient and grain only (no grid, no particles)."""
         rng = np.random.default_rng(seed)
         c = self.CELL
         self.w, self.h = size
@@ -59,10 +60,12 @@ class Backdrop:
         lines[:, ::c] = 7
         lines[::c, ::c] = 22  # brighter grid crossings
         tint = np.array(accent, np.float32) / max(accent)  # grid in the series colour
-        img += lines[:, :, None] * (0.5 + 0.7 * tint)
+        if not plain:
+            img += lines[:, :, None] * (0.5 + 0.7 * tint)
         img += rng.normal(0, 2.4, (h, w, 1)).astype(np.float32)  # film grain (background only)
         self.big = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
-        self.dots = [(rng.uniform(0, self.w), rng.uniform(0, self.h), rng.uniform(0.25, 1.0)) for _ in range(22)]
+        self.dots = [] if plain else [(rng.uniform(0, self.w), rng.uniform(0, self.h), rng.uniform(0.25, 1.0))
+                                      for _ in range(22)]
         self.sprites = {}
         self.accent = tuple(accent)
 
