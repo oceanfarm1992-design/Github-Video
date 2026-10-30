@@ -202,24 +202,15 @@ def clone_enabled():
         return False
 
 
-def _env_float(name, default, lo, hi):
-    try:
-        return min(hi, max(lo, float(os.environ.get(name, default))))
-    except ValueError:
-        return default
-
-
 def clone_style():
-    """Speaking-style clip in the voice reference repo, how closely to follow it (beta: 0 = copy
-    exactly) and expressiveness (StyleTTS2 embedding_scale)."""
-    ref = os.environ.get("VOICE_STYLE_REF", "").strip() or None
-    return (ref, _env_float("VOICE_STYLE_BETA", 0.3, 0.0, 1.0),
-            _env_float("VOICE_EXPRESSIVENESS", 1.0, 0.5, 3.0))
+    """Speaking style: a style block in the voice reference repo's profile.json (the
+    'presentation' explainer delivery by default). Set VOICE_STYLE to another style name,
+    or to 'default' for the plain delivery."""
+    return os.environ.get("VOICE_STYLE", "").strip() or "presentation"
 
 
 def style_key():
-    style_ref, beta, scale = clone_style()
-    return f"{style_ref}-{beta}-{scale}" if style_ref else ""
+    return clone_style()
 
 
 def voice_id():
@@ -238,7 +229,6 @@ def speech_text(t):
 
 def narrate_clone(texts, out_dir):
     from voiceclone import synthesize
-    style_ref, beta, scale = clone_style()
     style = style_key()
     clips = []
     for t in texts:
@@ -246,11 +236,10 @@ def narrate_clone(texts, out_dir):
         if not p.exists():
             raw = out_dir / f"{db.sha(f'clone{style}' + t)[:24]}.raw.wav"
             if not raw.exists():
-                kw = {"style_ref_file": style_ref, "styletts2_beta": beta,
-                      "styletts2_embedding_scale": scale} if style_ref else {}
-                used = synthesize(speech_text(t), str(raw), engine="styletts2",
+                # rvc="off": this job installs only the StyleTTS2 engine, not the RVC one
+                used = synthesize(speech_text(t), str(raw), engine="styletts2", style=style, rvc="off",
                                   voice_ref_repo=os.environ["VOICE_REF_REPO"],
-                                  voice_ref_cache=str(out_dir / ".voice_reference.mp3"), **kw)
+                                  voice_ref_cache=str(out_dir / ".voice_reference.mp3"))
                 log.info("voice engine: %s", used)
             # pitch-preserving speed-up (atempo)
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-filter:a",
