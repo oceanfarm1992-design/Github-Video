@@ -39,6 +39,7 @@ jobs:
     env:
       VOICE_REF_REPO: ${{ vars.VOICE_REF_REPO }}
       VOICE_SPEED: ${{ vars.VOICE_SPEED || '1.1' }}
+      VOICE_STYLE: ${{ vars.VOICE_STYLE || 'presentation' }}
       VOICE_STYLE_REF: ${{ vars.VOICE_STYLE_REF || 'style_reference.wav' }}
       VOICE_STYLE_BETA: ${{ vars.VOICE_STYLE_BETA || '0.3' }}
       VOICE_EXPRESSIVENESS: ${{ vars.VOICE_EXPRESSIVENESS || '1.0' }}
