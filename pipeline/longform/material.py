@@ -234,21 +234,66 @@ def tools_top10(conn, used, out_dir):
     return tools_review(conn, used, out_dir, fmt="tools_top10", need=7, max_items=10, repeat=True)
 
 
+# Each monthly tour covers one group of tools that no earlier tour covered, so no two tours repeat.
+PDF_GROUPS = [
+    ("Organize pages", ("merge-pdf", "split-pdf", "organize-pdf", "extract-pages", "delete-pages", "rotate-pdf",
+                        "duplicate-pages", "reverse-pages", "crop-pdf", "page-numbers")),
+    ("Edit and annotate", ("edit-pdf", "add-text", "draw-pdf", "highlight-pdf", "shapes-pdf", "sticky-notes",
+                           "whiteout-pdf", "add-images", "watermark-pdf", "header-footer")),
+    ("Convert files to PDF", ("jpg-to-pdf", "png-to-pdf", "image-to-pdf", "svg-to-pdf", "word-to-pdf", "excel-to-pdf",
+                              "powerpoint-to-pdf", "html-to-pdf", "text-to-pdf")),
+    ("Convert PDF to Office and images", ("pdf-to-word", "pdf-to-excel", "pdf-to-powerpoint", "pdf-to-jpg",
+                                         "pdf-to-png", "pdf-to-svg", "pdf-to-tiff")),
+    ("Privacy, forms and signatures", ("protect-pdf", "redact-pdf", "remove-metadata", "fill-forms", "create-forms",
+                                       "sign-pdf")),
+    ("Scan, OCR and compress", ("ocr-pdf", "ocr-image", "searchable-pdf", "image-enhance", "compress-pdf",
+                                "compress-images")),
+    ("Convert PDF to text and web formats", ("pdf-to-html", "pdf-to-txt", "pdf-to-markdown", "pdf-to-epub",
+                                             "pdf-to-rtf")),
+    ("Smart and review tools", ("compare-pdf", "summarize-pdf", "keywords-pdf", "outline-pdf", "extract-images")),
+]
+
+
+def pdf_tour_plan(slugs, used):
+    """(group name, [slugs]) for this month's tour, or None when every tool was already toured.
+    First the groups never toured (in order); after that only tools the site added since (never repeats)."""
+    covered = {k.split(":", 1)[1] for k in used if k.startswith("pdf_tool:")}
+    on_site = set(slugs)
+    for name, group in PDF_GROUPS:
+        tools = [s for s in group if s in on_site]
+        if f"pdf_tour_group:{name}" not in used and len(tools) >= 4:
+            return name, tools
+    grouped = {s for _, g in PDF_GROUPS for s in g}
+    fresh = [s for s in slugs if s not in covered and (s not in grouped or
+                                                      any(f"pdf_tour_group:{n}" in used and s in g
+                                                          for n, g in PDF_GROUPS))]
+    return ("New tools", fresh[:10]) if len(fresh) >= 4 else None
+
+
 def pdf_tour(conn, used, out_dir):
-    """Every tool of Privacy PDF Tools from its own page (the owner's site), once a month."""
+    """One group of Privacy PDF Tools (the owner's site), from each tool's own page, once a month."""
     from .. import promo
     month = time.strftime("%Y-%m", time.gmtime())
     if f"pdf_tour:{month}" in used:
         return None
-    entries = [(slug.replace("-", " ").title(), url) for slug, url in promo.discover()]
-    pages, items = _site_pages(entries, out_dir, need=5, max_items=12, min_sections=1)
+    found = dict(promo.discover())
+    plan = pdf_tour_plan(list(found), used)
+    if not plan:
+        log.info("every Privacy PDF Tools tool was already toured; no new tour this month")
+        return None
+    group, slugs = plan
+    entries = [(s.replace("-", " ").title(), found[s]) for s in slugs]
+    pages, items = _site_pages(entries, out_dir, need=max(4, len(entries) - 2), max_items=len(entries),
+                               min_sections=1)
     if not items:
         return None
-    facts = (f"WEBSITE: {promo.BRAND} ({promo.SITE})\n\n" +
+    facts = (f"WEBSITE: {promo.BRAND} ({promo.SITE})\nTHIS VIDEO: the '{group}' tools\n\n" +
              "\n\n".join(f"TOOL {i}: {it['name']} ({it['url']})\nDescription: {it['description']}"
                           for i, it in enumerate(items, 1)))
     visuals = _visuals_for(items)
-    return {"format": "pdf_tour", "subject": f"{promo.BRAND}: full tour", "key": f"pdf_tour:{month}",
+    toured = [s for s in slugs if any(it["url"] == found[s] for it in items)]
+    return {"format": "pdf_tour", "subject": f"{promo.BRAND}: {group}", "key": f"pdf_tour:{month}",
+            "site_keys": [f"pdf_tour_group:{group}"] + [f"pdf_tool:{s}" for s in toured],
             "facts": facts, "visuals": visuals, "pages": pages,
             "links": [(promo.BRAND, promo.SITE)] + [(it["name"], it["url"]) for it in items],
             "material_words": words(facts) + sum(words(v.get("text", "")) for v in visuals)}

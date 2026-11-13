@@ -90,6 +90,21 @@ class FakeRepoTests(unittest.TestCase):
         self.assertFalse(ranking.looks_fake(real))
 
 
+class PdfTourTests(unittest.TestCase):
+    def test_every_tour_covers_tools_no_earlier_tour_covered(self):
+        slugs = [s for _, g in material.PDF_GROUPS for s in g]
+        used, seen = {}, set()
+        for _ in range(len(material.PDF_GROUPS)):
+            group, tools = material.pdf_tour_plan(slugs, used)
+            self.assertFalse(seen & set(tools), group)  # no tool twice
+            seen |= set(tools)
+            used.update({f"pdf_tour_group:{group}": "x", **{f"pdf_tool:{t}": "x" for t in tools}})
+        self.assertEqual(seen, set(slugs))
+        self.assertIsNone(material.pdf_tour_plan(slugs, used))  # nothing new: no copy of an old tour
+        new = slugs + ["a-new", "b-new", "c-new", "d-new"]
+        self.assertEqual(material.pdf_tour_plan(new, used), ("New tools", ["a-new", "b-new", "c-new", "d-new"]))
+
+
 class WriterTests(unittest.TestCase):
     def test_target_is_adaptive_8_to_15_minutes(self):
         self.assertEqual(writer.target_words(500), writer.MIN_WORDS)

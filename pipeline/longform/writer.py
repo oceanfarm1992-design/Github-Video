@@ -82,9 +82,10 @@ BRIEFS = {
     "tools_top10": ("A full review of the 10 AI tools below, one chapter per tool, in the order given: what each "
                     "tool is and what its own website says it does. The list is a selection, not a ranking: never "
                     "call a tool the best or number one."),
-    "pdf_tour": ("A full guided tour of Privacy PDF Tools, the channel creator's own website, one chapter per tool "
-                 "in the order given: what each tool does and how to use it, from its own page. Say what the site "
-                 "says about privacy only in its own words."),
+    "pdf_tour": ("A full guided tour of one group of tools on Privacy PDF Tools, the channel creator's own "
+                 "website (the group is named in the material): open with the everyday job this group of tools "
+                 "solves, then one chapter per tool in the order given: what it does and how to use it, from its "
+                 "own page. Say what the site says about privacy only in its own words."),
     "sites": ("A full tour of the websites below, one chapter per website, in the order given, in the series "
               "'Websites that feel illegal to know' (they are all legal; say so once in the introduction). "
               "Explain what each site lets you do, section by section, from its own pages."),
