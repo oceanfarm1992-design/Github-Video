@@ -243,3 +243,22 @@ class HackerNewsTests(unittest.TestCase):
             {"title": "Show HN: Bet – AI casino picks", "url": "https://bet.example", "points": 50}]}
         with mock.patch.object(sources, "request", return_value=(200, {}, json.dumps(hits).encode())):
             self.assertEqual(sources.hacker_news(), [("tools", "video", "Clipster", "https://clipster.app/")])
+
+
+class AppStoreTests(unittest.TestCase):
+    def test_only_established_on_topic_apps_with_their_own_site(self):
+        from pipeline import sources
+        def app(name, site, genre="Education", rating="4+", n=50000, desc="Learn coding for kids with games"):
+            return {"trackName": name, "sellerUrl": site, "primaryGenreName": genre, "contentAdvisoryRating": rating,
+                    "userRatingCount": n, "averageUserRating": 4.7, "description": desc}
+        results = {"results": [app("Tynker - Coding for Kids", "https://www.tynker.com"),
+                               app("Coding for Kids", "https://x.example"),             # generic name
+                               app("Gamey", "https://g.example", genre="Games"),          # not Education
+                               app("Teeny", "https://t.example", rating="9+"),            # not rated 4+
+                               app("Tiny", "https://tiny.example", n=50),                 # too few ratings
+                               app("Appy", "https://apps.apple.com/app/1"),               # not its own site
+                               app("Math Solver Pro", "https://m.example")]}              # answer app
+        with mock.patch.object(sources, "APPSTORE_SEARCH", {"kids": {"coding": "coding for kids"}}), \
+             mock.patch.object(sources, "request", return_value=(200, {}, json.dumps(results).encode())), \
+             mock.patch.object(sources.time, "sleep"):
+            self.assertEqual(sources.app_store(), [("kids", "coding", "Tynker", "https://www.tynker.com/")])

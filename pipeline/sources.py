@@ -2,6 +2,8 @@
 
 Hugging Face Spaces - public API, trending AI apps (main channel's AI-tools series).
 Hacker News         - public Algolia API (no key), this week's 'Show HN' AI launches (main, AI for Normal People).
+App Store           - Apple's public search API (no key): well-rated apps with their developer's website
+                      (AI for Kids, rated 4+; AI for Normal People).
 Product Hunt        - official GraphQL API (PRODUCT_HUNT_API token), new AI products (main, AI for Kids,
                       AI for Normal People). Product Hunt's API terms restrict commercial use without their
                       permission; the owner chose to use it.
@@ -119,6 +121,68 @@ def hacker_news():
     return out
 
 
+APPSTORE_API = "https://itunes.apple.com/search?entity=software&country=us&limit=50&term="
+APPSTORE_MIN_RATINGS = 2000   # established apps only
+APPSTORE_MIN_STARS = 4.0
+# series -> {category: search terms}; the category comes from the search, not from guessing
+APPSTORE_SEARCH = {
+    "kids": {"drawing": "AI drawing kids", "reading": "kids reading AI", "coding": "coding for kids",
+             "homework": "AI homework help", "teachers": "AI teacher tools", "languages": "kids language learning",
+             "music": "kids music learning", "learn-ai": "AI for kids learning"},
+    "everyday": {"writing": "AI writing assistant", "photos": "AI photo editor", "travel": "AI trip planner",
+                 "cooking": "AI recipe", "organised": "AI planner", "learning": "AI language learning",
+                 "accessibility": "AI accessibility", "home": "AI plant identifier"},
+}
+
+
+APPSTORE_GENRES = {"kids": {"Education", "Books"},
+                   "everyday": {"Productivity", "Photo & Video", "Travel", "Food & Drink", "Education", "Lifestyle",
+                                "Utilities", "Navigation", "Reference", "Health & Fitness"}}
+
+
+APPSTORE_BAD_HOSTS = re.compile(r"(^|\.)(apple\.com|notion\.site|web\.app|firebaseapp\.com|github\.io|google\.com|"
+                                r"linktr\.ee|wixsite\.com|carrd\.co|blogspot\.com|wordpress\.com)$|^support\.")
+GENERIC = {"ai", "chat", "chatbot", "bot", "assistant", "writer", "writing", "photo", "photos", "editor", "generator",
+           "helper", "homework", "keyboard", "app", "video", "math", "solver", "calculator", "learn", "learning",
+           "language", "languages", "coding", "code", "for", "kids", "and", "&", "the", "plus", "pro", "ask",
+           "unlimited", "answer", "answers", "study", "drawing", "draw", "games", "game", "planner", "recipe",
+           "recipes", "trip", "travel", "+", "-", "5", "0", "gpt", "&amp;"}
+CHEAT_RE = re.compile(r"solv|answers?\b|scan|calculator|cheat|gpt|\bsnap", re.I)
+
+
+def generic_name(name):
+    """'AI Chat', 'Homework Helper': a description, not a product name."""
+    return all(w in GENERIC for w in re.findall(r"[\w&+]+", name.lower()))
+
+
+def app_store():
+    """[(series, category, name, url)]: well-rated App Store apps with their developer's own website (Apple's
+    public search API, no key). Kids apps must be rated 4+ by Apple."""
+    out = []
+    for series, searches in APPSTORE_SEARCH.items():
+        for cat, term in searches.items():
+            try:
+                _, _, body = request(APPSTORE_API + urllib.parse.quote(term), attempts=2)
+            except RuntimeError as e:
+                log.info("app store search %r failed: %s", term, e)
+                continue
+            for a in json.loads(body).get("results", []):
+                site = (a.get("sellerUrl") or "").replace("http://", "https://", 1)
+                name = re.split(r"\s+[–—-]\s+|:\s+", a.get("trackName") or "", maxsplit=1)[0].strip()
+                if (not site.startswith("https://") or not 2 <= len(name) <= 40
+                        or (a.get("userRatingCount") or 0) < APPSTORE_MIN_RATINGS
+                        or (a.get("averageUserRating") or 0) < APPSTORE_MIN_STARS
+                        or generic_name(name) or APPSTORE_BAD_HOSTS.search(urllib.parse.urlparse(site).netloc.lower())
+                        or (series == "kids" and (a.get("contentAdvisoryRating") != "4+" or CHEAT_RE.search(name)))
+                        or a.get("primaryGenreName") not in APPSTORE_GENRES[series]
+                        or topic_for(series, f"{a.get('trackName')} {(a.get('description') or '')[:600]}") != cat
+                        or NOT_FOR_VIDEOS.search(f"{name} {a.get('description', '')[:500]}")):
+                    continue
+                out.append((series, cat, name, f"https://{urllib.parse.urlparse(site).netloc}/"))
+            time.sleep(3)  # Apple allows about 20 searches a minute
+    return out
+
+
 def product_hunt(token):
     """[(series, category, name, link)] from new AI products on Product Hunt."""
     out = []
@@ -183,7 +247,8 @@ def run(conn):
     catalog._ensure(conn)
     conn.execute("DELETE FROM catalog_tools WHERE added_at < ?", (time.time() - KEEP_DAYS * 86400,))
     out = {}
-    jobs = [("hugging_face", lambda: hugging_face()), ("hacker_news", lambda: hacker_news())]
+    jobs = [("hugging_face", lambda: hugging_face()), ("hacker_news", lambda: hacker_news()),
+            ("app_store", lambda: app_store())]
     # Product Hunt hides every product's own link behind producthunt.com/r/ redirects, which Cloudflare blocks
     # for scripts; it stays off (PRODUCT_HUNT=1 turns it back on if that changes)
     token = os.environ.get("PRODUCT_HUNT_API") if os.environ.get("PRODUCT_HUNT") == "1" else None
