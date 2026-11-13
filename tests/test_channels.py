@@ -117,6 +117,28 @@ class AccountTests(unittest.TestCase):
             self.assertEqual(publish.platforms("kids"), {})
 
 
+class WorkspaceTests(unittest.TestCase):
+    def test_sister_channels_use_the_second_zernio_workspace(self):
+        from pipeline import zernio
+        calls = []
+        ws = {"ZERNIO_API_KEY": [{"_id": "mainfb", "platform": "facebook"}],
+              "ZERNIO_TWO_API_KEY": [{"_id": "kidsfb", "platform": "facebook"}, {"_id": "dayfb", "platform": "facebook"}]}
+
+        def fake(path, body=None, api="ZERNIO_API_KEY", **k):
+            calls.append(api)
+            return {"accounts": ws[api]}
+        env = {"ZERNIO_API_KEY": "a", "ZERNIO_TWO_API_KEY": "b",
+               "CHANNEL_ACCOUNTS": json.dumps({"kids": {"facebook": "kidsfb"}, "everyday": {"facebook": "dayfb"}})}
+        with mock.patch.dict(os.environ, env), mock.patch.object(zernio, "_call", fake),                 mock.patch.object(zernio, "_accounts", {}):
+            self.assertEqual(zernio.account("facebook", "main")["_id"], "mainfb")
+            kids = zernio.account("facebook", "kids")
+            self.assertEqual((kids["_id"], kids["_api"]), ("kidsfb", "ZERNIO_TWO_API_KEY"))
+            self.assertEqual(zernio.account("facebook", "everyday")["_id"], "dayfb")
+            self.assertEqual(sorted(set(calls)), ["ZERNIO_API_KEY", "ZERNIO_TWO_API_KEY"])
+        with mock.patch.dict(os.environ, {"ZERNIO_API_KEY": "a"}, clear=True):
+            self.assertEqual(zernio.api_for("kids"), "ZERNIO_API_KEY")  # no second key: same workspace
+
+
 class ContentTests(unittest.TestCase):
     ROW = {"source": "kids:drawing", "raw": json.dumps({
         "phrase": "kids who love to draw", "hashtag": "#KidsArt",

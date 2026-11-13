@@ -84,11 +84,11 @@ def facebook(m, script, mp4, chapters):
             "platforms": [{"platform": "facebook", "accountId": acct["_id"],
                            "platformSpecificData": {"firstComment": links_text(m)}}],
             "publishNow": True}
-    post = zernio._call("/posts", body, timeout=600).get("post", {})
+    post = zernio._call("/posts", body, timeout=600, api=acct.get("_api", zernio.MAIN_KEY)).get("post", {})
     pid = post.get("_id")
     if not pid:
         raise RuntimeError("zernio facebook: no post id")
-    plat = zernio.wait_published(pid, "facebook", timeout=1800)  # long uploads take Meta a while
+    plat = zernio.wait_published(pid, "facebook", timeout=1800, api=acct.get("_api", zernio.MAIN_KEY))  # long uploads take Meta a while
     return pid, plat.get("platformPostUrl", "")
 
 

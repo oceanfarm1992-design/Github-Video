@@ -24,6 +24,15 @@ def run(conn=None):
                                       "needsReconnection", "lastRateLimitError")) for a in accts]
     except Exception as e:
         out["accounts_error"] = str(e)[:200]
+    import os
+    if os.environ.get(zernio.SISTER_KEY):  # second workspace: the sister channels' accounts
+        try:
+            data = zernio._call("/accounts", api=zernio.SISTER_KEY)
+            accts = data.get("accounts", data) if isinstance(data, dict) else data
+            out["sister_accounts"] = [_short(a, ("_id", "platform", "username", "isActive", "platformStatus",
+                                                 "needsReconnection")) for a in accts]
+        except Exception as e:
+            out["sister_accounts_error"] = str(e)[:200]
     try:
         data = zernio._call("/comment-automations")
         items = data.get("automations", data.get("data", data)) if isinstance(data, dict) else data

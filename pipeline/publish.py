@@ -208,7 +208,7 @@ def sister_platforms(channel):
     out = {}
     if youtube_token_available(channel):
         out["youtube"] = (False, None)
-    if zernio.enabled():
+    if zernio.enabled(channel):
         for plat in ("facebook", "instagram", "tiktok"):
             if zernio.available(plat, channel):
                 out[plat] = (True, lambda c, url, plat=plat: zernio.publish_reel(plat, c, url, channel))

@@ -15,12 +15,22 @@ log = logging.getLogger("zernio")
 BASE = "https://zernio.com/api/v1"
 
 
-def enabled():
-    return bool(os.environ.get("ZERNIO_API_KEY"))
+MAIN_KEY = "ZERNIO_API_KEY"
+SISTER_KEY = "ZERNIO_TWO_API_KEY"  # second Zernio workspace: the sister channels' accounts
 
 
-def _call(path, body=None, method=None, timeout=None, idempotency_key=None):
-    h = {"Authorization": f"Bearer {os.environ['ZERNIO_API_KEY']}", "Content-Type": "application/json"}
+def api_for(channel="main"):
+    """Env name of the Zernio API key a channel uses: sister channels use the second workspace when its key
+    is set, the main channel always the first."""
+    return SISTER_KEY if channel != "main" and os.environ.get(SISTER_KEY) else MAIN_KEY
+
+
+def enabled(channel="main"):
+    return bool(os.environ.get(api_for(channel)))
+
+
+def _call(path, body=None, method=None, timeout=None, idempotency_key=None, api=MAIN_KEY):
+    h = {"Authorization": f"Bearer {os.environ[api]}", "Content-Type": "application/json"}
     if idempotency_key:  # a retried request replays the first response instead of posting twice
         h["Idempotency-Key"] = idempotency_key
     _, _, r = request(BASE + path, headers=h, method=method or ("POST" if body is not None else "GET"),
@@ -28,22 +38,28 @@ def _call(path, body=None, method=None, timeout=None, idempotency_key=None):
     return json.loads(r or b"{}")
 
 
-_accounts = None
+_accounts = {}  # api key env name -> accounts of that workspace
+
+
+def accounts(api=MAIN_KEY):
+    """Connected accounts of one Zernio workspace, each tagged with "_api" (the key to call it with)."""
+    if api not in _accounts:
+        data = _call("/accounts", api=api)
+        found = data.get("accounts", data) if isinstance(data, dict) else data
+        _accounts[api] = [{**a, "_api": api} for a in found]
+    return _accounts[api]
 
 
 def account(platform, channel="main"):
     """The channel's connected account for the platform (channels.pick_account), or None."""
-    global _accounts
     from .channels import pick_account
-    if _accounts is None:
-        data = _call("/accounts")
-        _accounts = data.get("accounts", data) if isinstance(data, dict) else data
-    return pick_account(_accounts, platform, channel, os.environ.get(f"ZERNIO_{platform.upper()}_ACCOUNT_ID"))
+    return pick_account(accounts(api_for(channel)), platform, channel,
+                        os.environ.get(f"ZERNIO_{platform.upper()}_ACCOUNT_ID"))
 
 
 def available(platform, channel="main"):
     try:
-        return enabled() and account(platform, channel) is not None
+        return enabled(channel) and account(platform, channel) is not None
     except Exception as e:
         log.warning("zernio accounts lookup failed: %s", e)
         return False
@@ -65,12 +81,12 @@ def _entry(post, platform):
     return next((p for p in post.get("platforms", []) if p.get("platform") == platform), {})
 
 
-def wait_published(post_id, platform, timeout=REEL_WAIT_SECONDS):
+def wait_published(post_id, platform, timeout=REEL_WAIT_SECONDS, api=MAIN_KEY):
     """Polls the post until it is live on the platform and returns that platform's entry. Zernio answers
     "processing" first and uploads to Meta afterwards, so a Reel Meta rejects only shows up here."""
     deadline = time.time() + timeout
     while True:
-        plat = _entry(_call(f"/posts/{post_id}").get("post", {}), platform)
+        plat = _entry(_call(f"/posts/{post_id}", api=api).get("post", {}), platform)
         status = plat.get("status")
         if status == "published":
             return plat
@@ -108,14 +124,14 @@ def publish_reel(platform, c, video_url, channel="main"):
     try:
         # publishNow uploads the video before answering: allow 3 minutes (a 20 s timeout plus an automatic
         # retry once created a duplicate request that Zernio rejected with 409)
-        post = _call("/posts", body, timeout=180, idempotency_key=key).get("post", {})
+        post = _call("/posts", body, timeout=180, idempotency_key=key, api=acct.get("_api", MAIN_KEY)).get("post", {})
     except RuntimeError as e:
         existing = re.search(r'"existingPostId"\s*:\s*"([^"]+)"', str(e))
         if "409" not in str(e) or not existing:
             raise
         # Zernio: this exact content is already on this account (an earlier attempt) -> record it once it is live
         log.info("%s: already posted as %s; recording it instead of failing", platform, existing.group(1))
-        plat = wait_published(existing.group(1), platform)
+        plat = wait_published(existing.group(1), platform, api=acct.get("_api", MAIN_KEY))
         try:
             create_automation(platform, acct, _first(plat, "platformPostId"), existing.group(1), c)
         except Exception as ae:
@@ -128,7 +144,7 @@ def publish_reel(platform, c, video_url, channel="main"):
     if not pid:
         raise RuntimeError(f"zernio {platform}: no post id in response")
     if plat.get("status") != "published":  # the Story follows only a Reel that is really live
-        plat = wait_published(post.get("_id"), platform) if post.get("_id") else plat
+        plat = wait_published(post.get("_id"), platform, api=acct.get("_api", MAIN_KEY)) if post.get("_id") else plat
     try:
         create_automation(platform, acct, _first(plat, "platformPostId"), post.get("_id"), c)
     except Exception as e:  # posting succeeded; automation can be re-created in the Zernio dashboard
@@ -146,7 +162,7 @@ def publish_story(platform, c, video_url, channel="main"):
     import uuid
     key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"story|{acct['_id']}|{video_url}"))
     try:
-        post = _call("/posts", body, timeout=180, idempotency_key=key).get("post", {})
+        post = _call("/posts", body, timeout=180, idempotency_key=key, api=acct.get("_api", MAIN_KEY)).get("post", {})
     except RuntimeError as e:
         existing = re.search(r'"existingPostId"\s*:\s*"([^"]+)"', str(e))
         if "409" not in str(e) or not existing:
@@ -226,7 +242,7 @@ def create_automation(platform, acct, platform_post_id, zernio_post_id, c):
         "dmMessage": msgs[0],
         "dmMessageVariations": msgs[1:],
         "commentReply": PUBLIC_REPLY,
-    })
+    }, api=acct.get("_api", MAIN_KEY))
 
 
 # ------------------------------------------------------------- comments
@@ -236,7 +252,7 @@ def list_comments(zernio_post_id, platform, channel="main"):
     cursor = None
     for _ in range(5):  # at most 500 comments per post per run
         q = f"?accountId={acct['_id']}&limit=100" + (f"&cursor={cursor}" if cursor else "")
-        data = _call(f"/inbox/comments/{zernio_post_id}{q}")
+        data = _call(f"/inbox/comments/{zernio_post_id}{q}", api=acct.get("_api", MAIN_KEY))
         d = data.get("data", data)
         items = d.get("comments", d.get("items", d if isinstance(d, list) else []))
         for c in items:
@@ -253,37 +269,37 @@ def reply_comment(zernio_post_id, platform, comment_id, text, channel="main"):
     import uuid
     acct = account(platform, channel)
     key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{acct['_id']}|{zernio_post_id}|{comment_id}|{text}"))
-    h = {"Authorization": f"Bearer {os.environ['ZERNIO_API_KEY']}", "Content-Type": "application/json",
+    h = {"Authorization": f"Bearer {os.environ[acct.get('_api', MAIN_KEY)]}", "Content-Type": "application/json",
          "Idempotency-Key": key}
     request(f"{BASE}/inbox/comments/{zernio_post_id}", headers=h, method="POST", attempts=2,
             data=json.dumps({"accountId": acct["_id"], "message": text, "commentId": comment_id}).encode())
 
 
-_platform_ids = None
+_platform_ids = {}  # api key env name -> {zernio post id: platform post id}
 
 
-def platform_post_id(zernio_post_id):
+def platform_post_id(zernio_post_id, api=MAIN_KEY):
     """Instagram media / Facebook post id for a Zernio post (the private-reply endpoint needs it).
     Read from our comment automations, which carry both ids; falls back to the Zernio id."""
-    global _platform_ids
-    if _platform_ids is None:
+    if api not in _platform_ids:
         try:
-            data = _call("/comment-automations")
+            data = _call("/comment-automations", api=api)
             items = data.get("automations", data.get("data", data)) if isinstance(data, dict) else data
-            _platform_ids = {a.get("postId"): a.get("platformPostId") for a in items if a.get("postId")}
+            _platform_ids[api] = {a.get("postId"): a.get("platformPostId") for a in items if a.get("postId")}
         except Exception as e:
             log.warning("could not map platform post ids: %s", e)
-            _platform_ids = {}
-    return _platform_ids.get(zernio_post_id) or zernio_post_id
+            _platform_ids[api] = {}
+    return _platform_ids[api].get(zernio_post_id) or zernio_post_id
 
 
 def private_reply(zernio_post_id, platform, comment_id, text, channel="main"):
     """Send the commenter a DM (Meta private reply). Meta allows ONE per comment, within 7 days.
     Returns "sent", or "already" when that comment's private reply was used (e.g. by the automation)."""
     acct = account(platform, channel)
-    pid = platform_post_id(zernio_post_id)
+    pid = platform_post_id(zernio_post_id, acct.get("_api", MAIN_KEY))
     try:
-        _call(f"/inbox/comments/{pid}/{comment_id}/private-reply", {"accountId": acct["_id"], "message": text[:1000]})
+        _call(f"/inbox/comments/{pid}/{comment_id}/private-reply", {"accountId": acct["_id"], "message": text[:1000]},
+              api=acct.get("_api", MAIN_KEY))
         return "sent"
     except RuntimeError as e:
         msg = str(e)
