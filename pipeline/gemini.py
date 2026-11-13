@@ -1,4 +1,4 @@
-"""Google Gemini API (free tier) for text that is built only from public material: long-video scripts, GitHub
+"""Free models: Google Gemini API (free tier), then Groq (pipeline/groq.py), for text that is built only from public material: long-video scripts, GitHub
 Short scripts and new-tool suggestions. Never used for follower comments (personal data): Google may use
 free-tier prompts to improve its products.
 
@@ -22,8 +22,14 @@ def key():
     return os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMMINI_API") or ""
 
 
-def available():
+def gemini_available():
     return bool(key())
+
+
+def available():
+    """A free model is configured: Gemini, or Groq as the second choice."""
+    from . import groq
+    return bool(key()) or groq.available()
 
 
 def _version(name):
@@ -49,9 +55,17 @@ def models():
 
 
 def generate_json(prompt, system=None, max_tokens=16000):
-    """Parsed JSON answer, or None (no key, blocked, or not JSON). One retry after a rate limit."""
-    if not available():
-        return None
+    """Parsed JSON answer from Gemini, else from Groq (second free model), else None."""
+    out = _gemini_json(prompt, system, max_tokens) if gemini_available() else None
+    if out is None:
+        from . import groq
+        if groq.available():
+            log.info("using groq")
+            out = groq.generate_json(prompt, system, min(max_tokens, 8000))
+    return out
+
+
+def _gemini_json(prompt, system, max_tokens):
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"responseMimeType": "application/json", "maxOutputTokens": max_tokens,
                                  "temperature": 0.4}}

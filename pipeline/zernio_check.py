@@ -37,6 +37,24 @@ def youtube_channels():
     return out
 
 
+def free_models():
+    """Each free model answers a tiny JSON request (no personal data)."""
+    from . import gemini, groq
+    out = {}
+    probe = 'Answer with JSON only: {"ok": true}'
+    if gemini.gemini_available():
+        try:
+            out["gemini"] = {"models": gemini.models(), "answer": gemini._gemini_json(probe, None, 50)}
+        except Exception as e:
+            out["gemini"] = f"error: {str(e)[:150]}"
+    if groq.available():
+        try:
+            out["groq"] = {"models": groq.models(), "answer": groq.generate_json(probe, None, 50)}
+        except Exception as e:
+            out["groq"] = f"error: {str(e)[:150]}"
+    return out
+
+
 def run(conn=None):
     out = {}
     if not zernio.enabled():
@@ -51,6 +69,7 @@ def run(conn=None):
         out["accounts_error"] = str(e)[:200]
     import os
     out["youtube_channels"] = youtube_channels()
+    out["free_models"] = free_models()
     if os.environ.get(zernio.SISTER_KEY):  # second workspace: the sister channels' accounts
         try:
             data = zernio._call("/accounts", api=zernio.SISTER_KEY)
