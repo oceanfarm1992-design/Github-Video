@@ -91,10 +91,10 @@ def hugging_face():
 
 def ph_schema(token):
     """Diagnostic: the Post type's fields (run the sources stage with sources=ph-schema)."""
-    q = '{ __type(name: "Post") { fields { name type { name kind ofType { name } } } } }'
+    q = '{ posts(first: 5, order: VOTES, topic: "artificial-intelligence") { edges { node { name website productLinks { type url } } } } }'
     _, _, body = request(PH_API, method="POST", data=json.dumps({"query": q}).encode(),
                          headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-    log.info("product hunt Post fields: %s", [f["name"] for f in json.loads(body)["data"]["__type"]["fields"]])
+    log.info("product hunt links: %s", body[:1500].decode("utf-8", "replace").replace('"', "'"))
 
 
 def product_hunt(token):
