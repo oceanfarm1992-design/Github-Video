@@ -26,7 +26,7 @@ MAX_CHECKS = 30            # live checks per source per day (each fetches the to
 HF_MIN_LIKES = 30
 HF_API = "https://huggingface.co/api/spaces?sort=trendingScore&limit=100&full=true"
 PH_API = "https://api.producthunt.com/v2/api/graphql"
-PH_QUERY = """query($topic: String!) { posts(first: 40, order: NEWEST, topic: $topic) { edges { node {
+PH_QUERY = """query($topic: String!, $after: DateTime!) { posts(first: 50, order: VOTES, topic: $topic, postedAfter: $after) { edges { node {
   name tagline website votesCount topics(first: 6) { edges { node { slug } } } } } } }"""
 
 # series -> [(category, keyword regex)], first match wins; categories are the catalogs' own keys
@@ -93,11 +93,17 @@ def product_hunt(token):
     """[(series, category, name, link)] from new AI products on Product Hunt."""
     out = []
     for topic in ("artificial-intelligence",):
+        after = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 7 * 86400))  # this week's most voted
         _, _, body = request(PH_API, method="POST", data=json.dumps({"query": PH_QUERY,
-                                                                     "variables": {"topic": topic}}).encode(),
+                                                                     "variables": {"topic": topic, "after": after}}).encode(),
                              headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
                                       "Accept": "application/json"}, attempts=2)
-        for e in (json.loads(body).get("data") or {}).get("posts", {}).get("edges", []):
+        data = json.loads(body)
+        if data.get("errors"):
+            raise RuntimeError(f"product hunt: {str(data['errors'])[:300]}")
+        edges = (data.get("data") or {}).get("posts", {}).get("edges", [])
+        log.info("product hunt: %d AI products this week", len(edges))
+        for e in edges:
             p = e["node"]
             text = f"{p['name']} {p.get('tagline') or ''}"
             if not p.get("website") or NOT_FOR_VIDEOS.search(text) or (p.get("votesCount") or 0) < 20:
