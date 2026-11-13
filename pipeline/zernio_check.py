@@ -44,12 +44,12 @@ def free_models():
     probe = 'Answer with JSON only: {"ok": true}'
     if gemini.gemini_available():
         try:
-            out["gemini"] = {"models": gemini.models(), "answer": gemini._gemini_json(probe, None, 50)}
+            out["gemini"] = {"models": gemini.models(), "answer": gemini._gemini_json(probe, None, 2000)}
         except Exception as e:
             out["gemini"] = f"error: {str(e)[:150]}"
     if groq.available():
         try:
-            out["groq"] = {"models": groq.models(), "answer": groq.generate_json(probe, None, 50)}
+            out["groq"] = {"models": groq.models(), "answer": groq.generate_json(probe, None, 2000)}
         except Exception as e:
             out["groq"] = f"error: {str(e)[:150]}"
     return out
