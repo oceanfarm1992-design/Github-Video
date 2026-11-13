@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -206,3 +207,27 @@ class UniqueToolTests(unittest.TestCase):
         self.assertTrue(catalog.identity_ok("Khanmigo", "https://www.khanmigo.ai", "Khanmigo", ""))
         self.assertTrue(catalog.identity_ok("Read Along", "https://readalong.google", "", ""))
         self.assertFalse(catalog.identity_ok("Magic Tutor", "https://example.com", "Buy domains", "Parked page"))
+
+
+class ToolSourceTests(unittest.TestCase):
+    def test_tools_are_sorted_into_each_channels_topics(self):
+        from pipeline import sources
+        self.assertEqual(sources.topic_for("tools", "Turn any photo into a short video clip"), "video")
+        self.assertEqual(sources.topic_for("tools", "Clone your voice for podcasts"), "voice")
+        self.assertEqual(sources.topic_for("everyday", "Plan your next trip in seconds"), "travel")
+        self.assertEqual(sources.topic_for("kids", "Math homework tutor for students"), "homework")
+        self.assertIsNone(sources.topic_for("everyday", "A database for developers"))
+
+    def test_new_tools_are_checked_stored_and_kept_one_year(self):
+        from pipeline import catalog, db, sources
+        conn = db.connect(":memory:")
+        found = [("tools", "video", "Clipper", "https://clipper.example"),
+                 ("tools", "video", "Fake", "https://fake.example")]
+        with mock.patch.object(catalog, "verify", side_effect=lambda n, u: n == "Clipper"):
+            self.assertEqual(sources.add(conn, found, "test"), 1)
+            self.assertEqual(sources.add(conn, found, "test"), 0)  # already known: not checked again
+        self.assertIn(("Clipper", "https://clipper.example"), catalog.merged(conn, "tools")["video"][2])
+        conn.execute("UPDATE catalog_tools SET added_at=?", (time.time() - 400 * 86400,))
+        with mock.patch.object(sources, "hugging_face", return_value=[]), mock.patch.dict(os.environ, {}, clear=True):
+            sources.run(conn)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM catalog_tools").fetchone()[0], 0)
