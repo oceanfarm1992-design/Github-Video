@@ -89,6 +89,14 @@ def hugging_face():
     return out
 
 
+def ph_schema(token):
+    """Diagnostic: the Post type's fields (run the sources stage with sources=ph-schema)."""
+    q = '{ __type(name: "Post") { fields { name type { name kind ofType { name } } } } }'
+    _, _, body = request(PH_API, method="POST", data=json.dumps({"query": q}).encode(),
+                         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    log.info("product hunt Post fields: %s", [f["name"] for f in json.loads(body)["data"]["__type"]["fields"]])
+
+
 def product_hunt(token):
     """[(series, category, name, link)] from new AI products on Product Hunt."""
     out = []
@@ -152,6 +160,9 @@ def run(conn):
     """Once a day: new tools from Hugging Face and Product Hunt; tools found more than a year ago are dropped."""
     catalog._ensure(conn)
     conn.execute("DELETE FROM catalog_tools WHERE added_at < ?", (time.time() - KEEP_DAYS * 86400,))
+    if os.environ.get("GENERATE_SOURCES") == "ph-schema" and os.environ.get("PRODUCT_HUNT_API"):
+        ph_schema(os.environ["PRODUCT_HUNT_API"])
+        return {}
     out = {}
     jobs = [("hugging_face", lambda: hugging_face())]
     token = os.environ.get("PRODUCT_HUNT_API")
