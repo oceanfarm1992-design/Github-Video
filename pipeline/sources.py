@@ -158,11 +158,13 @@ def run(conn):
     if token:
         jobs.append(("product_hunt", lambda: product_hunt(token)))
     for name, fetch in jobs:  # each source once a day; a failed one retries on the next run
-        if db.kv_get(conn, f"sources_day:{name}") == db.today():
+        if db.kv_get(conn, f"sources_done:{name}") == db.today():
             continue
         try:
-            out[name] = add(conn, fetch(), name.replace("_", " "))
-            db.kv_set(conn, f"sources_day:{name}", db.today())
+            found = fetch()
+            out[name] = add(conn, found, name.replace("_", " "))
+            if found:  # an empty answer is retried on the next run
+                db.kv_set(conn, f"sources_done:{name}", db.today())
         except Exception as e:
             log.warning("%s failed: %s", name, e)
     return out
