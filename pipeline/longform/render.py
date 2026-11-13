@@ -371,12 +371,16 @@ class Frames:
 
 # ------------------------------------------------------------------ render
 SERIES_OF = {"github_top10": "ranking", "tools_top10": "tools", "pdf_tour": "promo"}  # long format -> series look
+TAG_OF = {"github_top10": "WEEKLY TOP 10", "pdf_tour": "FULL TOUR"}
 
 
 def render(m, script, out_dir):
     """Renders the long video; returns (mp4_path, chapters [(seconds, title)], thumbnail_path)."""
     out_dir = Path(out_dir)
     theme = THEMES.get(SERIES_OF.get(m["format"], m["format"]), THEMES["github"])
+    if m["format"] in TAG_OF:  # the series look, with this format's own badge
+        import dataclasses
+        theme = dataclasses.replace(theme, tag=TAG_OF[m["format"]])
     texts = [p["text"] for ch in script["chapters"] for p in ch["paragraphs"]]
     clips = short_render.narrate(texts, out_dir)
     if not clips:
