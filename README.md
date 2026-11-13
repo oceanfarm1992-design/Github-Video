@@ -63,6 +63,30 @@ The `engage` stage (every 30 min) answers follower comments automatically on Fac
 - YouTube replies need the `youtube.force-ssl` scope: re-run `python tools/youtube_auth.py` once.
 - Posts published before Zernio ids were stored (`manual-*`) cannot be answered on Facebook/Instagram.
 
+## Sister channels: AI for Kids, AI for Normal People
+
+Two more channels run from the same pipeline (`pipeline/channels.py`, `pipeline/channel_series.py`):
+
+| | AI for Kids | AI for Normal People |
+|---|---|---|
+| Audience | parents and teachers (not "made for kids") | everyday people, no tech skills |
+| Shorts | "5 AI tools for kids who love to draw", every 2 days | "5 easy AI tools for planning a trip", every 2 days (the other day) |
+| Long video | every 5 days (first: Nov 18) | every 5 days (first: Nov 15) |
+
+Facts come only from each tool's own homepage, like the main AI-tools series. A channel makes nothing until at
+least one of its accounts is connected, and it never posts to the main channel's accounts.
+
+Connect a channel:
+1. YouTube: `python tools/youtube_auth.py --channel kids` (and `--channel everyday`); on Google's screen pick that
+   channel. It stores `YOUTUBE_REFRESH_TOKEN_KIDS` / `_EVERYDAY` (same OAuth client as the main channel).
+2. Facebook / Instagram / TikTok: connect the channel's accounts in Zernio, run the `zernio` stage to see their ids,
+   then set the repo variable `CHANNEL_ACCOUNTS`, e.g.
+   `{"main": {"facebook": "<id>", "instagram": "<id>"}, "kids": {"facebook": "<id>", "instagram": "<id>", "tiktok": "<id>"}, "everyday": {...}}`
+   (an id or the account's username). `main` pins the main channel's accounts.
+
+Settings: `CHANNELS_ENABLED` (`kids,everyday`; empty turns them off), `CHANNELS_START`, `CHANNEL_SHORT_EVERY_DAYS` (2),
+`CHANNEL_LONG_EVERY_DAYS` (5). Preview: run the `preview` stage with sources `kids` or `everyday`.
+
 ## Platform status
 
 | Platform | Status |

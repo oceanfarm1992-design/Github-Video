@@ -58,7 +58,10 @@ def loudnorm(audio):
 
 def mix_sfx(audio, track, total, dest):
     """Lays the sound-effects track over the voice + music (SFX_VOLUME, default 0.6)."""
-    vol = _env_float("SFX_VOLUME", 0.6, 0.0, 2.0)
+    try:
+        vol = min(2.0, max(0.0, float(os.environ.get("SFX_VOLUME", "0.6"))))
+    except ValueError:
+        vol = 0.6
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(audio), "-i", str(track), "-filter_complex",
            f"[1:a]aresample=44100,volume={vol}[s];[0:a]aresample=44100[v];"
            "[v][s]amix=inputs=2:duration=first:normalize=0[out]", "-map", "[out]",

@@ -21,7 +21,6 @@ KIDS = {
     "drawing": ("kids who love to draw", "#KidsArt", [
         ("Quick, Draw!", "https://quickdraw.withgoogle.com"), ("AutoDraw", "https://www.autodraw.com"),
         ("Animated Drawings", "https://sketch.metademolab.com"), ("Canva for Education", "https://www.canva.com/education/"),
-        ("Chrome Music Lab", "https://musiclab.chromeexperiments.com"),
         ("Adobe Express", "https://www.adobe.com/express/"), ("Drawing Desk", "https://drawingdesk.com"),
         ("Storybird", "https://storybird.com")]),
     "reading": ("kids learning to read", "#KidsReading", [
