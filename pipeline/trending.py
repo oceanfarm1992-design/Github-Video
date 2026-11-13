@@ -60,7 +60,8 @@ def build(conn, entries, max_rank=10):
             continue
         data, _ = get_json(conn, f"https://api.github.com/repos/{full}", gh_headers(), ttl=1800)
         desc = clean(data.get("description"), limit=160)
-        if not desc or data.get("fork") or data.get("archived"):
+        from .ranking import looks_fake
+        if not desc or data.get("fork") or data.get("archived") or looks_fake(data):
             log.info("trending #%d %s: no English description (or fork/archived), next", rank, full)
             continue
         url = data["html_url"]

@@ -61,7 +61,10 @@ def github_search(conn):
         url = ("https://api.github.com/search/repositories?per_page=20&sort=stars&order=desc&q="
                + urllib.parse.quote(q))
         data, _ = get_json(conn, url, gh_headers(), ttl=1500)
+        from .ranking import looks_fake
         for r in data.get("items", []):
+            if looks_fake(r):  # fake-star "free software" installers, cracks, cheats: never a video
+                continue
             ghdata.record_stars(conn, r["full_name"], r["stargazers_count"])  # builds the growth curves
             n += add(conn, title=r["full_name"], source="github", url=r["html_url"],
                      github_url=r["html_url"], repo_id=f"gh:{r['id']}", published_at=r["created_at"],

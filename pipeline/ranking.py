@@ -13,7 +13,7 @@ from . import config, db
 from .http import get_json, gh_headers
 
 log = logging.getLogger("ranking")
-SEARCH = "https://api.github.com/search/repositories?sort=stars&order=desc&per_page=30&q="
+SEARCH = "https://api.github.com/search/repositories?sort=stars&order=desc&per_page=100&q="
 MIN_STARS = 50
 
 
@@ -30,6 +30,23 @@ def clean(desc, limit=100):
     return desc if desc.endswith((".", "!", "?", "...")) else desc + "."
 
 
+# Fake-star repos posing as free copies of paid software (a common malware route) and abuse tools.
+SPAM_RE = re.compile(r"\b(crack(ed)?|keygen|serial key|license key|activator|pre-?activated|full version|"
+                     r"standalone|desktop (setup|installer|config)|(full|working|complete) (installer|setup)|full[- ]feature|"
+                     r"trainer|cheats?|hacks?|hacked|spoofer|executor|injector|aimbot|bypass|unlocked|free download|"
+                     r"mod apk|premium free|sheerid|verif(y|ication) (bot|tool))\b", re.I)
+MIN_FORK_RATIO = 0.02  # real projects get forked; star-farmed fakes have ~1,200 stars and 0-1 forks
+
+
+def looks_fake(r):
+    """True for repos to never show: fake-star software 'installers', cracks, cheats and bypass tools."""
+    text = f"{r.get('full_name', '')} {r.get('description') or ''}".replace("-", " ").replace("_", " ")
+    if SPAM_RE.search(text):
+        return True
+    stars, forks = r.get("stargazers_count") or 0, r.get("forks_count") or 0
+    return forks < max(3, stars * MIN_FORK_RATIO)
+
+
 def build(conn, size=None):
     """Queues this week's ranking topic; returns its id or None."""
     size = size or config.RANKING_SIZE
@@ -43,7 +60,7 @@ def build(conn, size=None):
     items = []
     for r in data.get("items", []):
         desc = clean(r.get("description"))
-        if not desc:
+        if not desc or looks_fake(r):
             continue
         items.append({"name": r["full_name"], "url": r["html_url"], "description": desc,
                       "stars": r["stargazers_count"], "language": r.get("language")})

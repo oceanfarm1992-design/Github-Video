@@ -205,7 +205,7 @@ def github_top10(conn, used, out_dir):
         if len(items) >= 10:
             break
         desc = ranking.clean(r.get("description"), limit=300)
-        if not desc:
+        if not desc or ranking.looks_fake(r):
             continue
         page, secs = capture.capture(r["html_url"], out_dir, max_css_height=6000)
         sections = _clean_sections(secs, limit=5)

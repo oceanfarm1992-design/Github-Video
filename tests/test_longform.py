@@ -75,6 +75,21 @@ class WeeklyLongTests(unittest.TestCase):
             self.assertEqual(fmts, ["github_top10", "kids"])
 
 
+class FakeRepoTests(unittest.TestCase):
+    def test_fake_star_installers_and_cheats_are_never_shown(self):
+        from pipeline import ranking
+        fake = [{"full_name": "x/archicad-desktop-setup", "description": "Archicad 2026 complete standalone desktop setup",
+                 "stargazers_count": 1207, "forks_count": 0},
+                {"full_name": "x/tool", "description": "Delta Executor for PC: Full Working Installer",
+                 "stargazers_count": 1198, "forks_count": 40},
+                {"full_name": "x/thing", "description": "A neat library for parsing things", "stargazers_count": 1200,
+                 "forks_count": 1}]
+        real = {"full_name": "DIYgod/pinky", "description": "Let AI agents use your phone, with you in the loop.",
+                "stargazers_count": 2040, "forks_count": 220}
+        self.assertTrue(all(ranking.looks_fake(r) for r in fake))
+        self.assertFalse(ranking.looks_fake(real))
+
+
 class WriterTests(unittest.TestCase):
     def test_target_is_adaptive_8_to_15_minutes(self):
         self.assertEqual(writer.target_words(500), writer.MIN_WORDS)

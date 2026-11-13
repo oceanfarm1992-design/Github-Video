@@ -18,7 +18,7 @@ PAGE = """
 
 
 def api(full):
-    return {"id": hash(full) % 10**6, "html_url": f"https://github.com/{full}", "stargazers_count": 5400,
+    return {"id": hash(full) % 10**6, "html_url": f"https://github.com/{full}", "stargazers_count": 5400, "forks_count": 410,
             "description": "A fast tool for running AI agents.", "language": "Rust", "topics": ["ai"],
             "license": {"spdx_id": "MIT"}, "created_at": "2026-10-01T00:00:00Z",
             "pushed_at": "2026-10-16T00:00:00Z", "homepage": "", "fork": False, "archived": False}
