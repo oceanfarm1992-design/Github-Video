@@ -146,18 +146,17 @@ def run(conn):
     """Once a day: new tools from Hugging Face and Product Hunt; tools found more than a year ago are dropped."""
     catalog._ensure(conn)
     conn.execute("DELETE FROM catalog_tools WHERE added_at < ?", (time.time() - KEEP_DAYS * 86400,))
-    if db.kv_get(conn, "sources_day") == db.today():
-        return {"skipped": "already ran today"}
     out = {}
-    try:
-        out["hugging_face"] = add(conn, hugging_face(), "hugging face")
-    except Exception as e:
-        log.warning("Hugging Face Spaces failed: %s", e)
+    jobs = [("hugging_face", lambda: hugging_face())]
     token = os.environ.get("PRODUCT_HUNT_API")
     if token:
+        jobs.append(("product_hunt", lambda: product_hunt(token)))
+    for name, fetch in jobs:  # each source once a day; a failed one retries on the next run
+        if db.kv_get(conn, f"sources_day:{name}") == db.today():
+            continue
         try:
-            out["product_hunt"] = add(conn, product_hunt(token), "product hunt")
+            out[name] = add(conn, fetch(), name.replace("_", " "))
+            db.kv_set(conn, f"sources_day:{name}", db.today())
         except Exception as e:
-            log.warning("Product Hunt failed: %s", e)
-    db.kv_set(conn, "sources_day", db.today())
+            log.warning("%s failed: %s", name, e)
     return out
