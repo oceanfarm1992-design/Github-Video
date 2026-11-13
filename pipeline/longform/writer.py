@@ -149,7 +149,14 @@ def _call(prompt):
 
 
 def write(m):
-    """Validated script dict, or None. Needs ANTHROPIC_API_KEY."""
+    """Validated script dict, or None. LONG_WRITER=pagetext (default, free): the pages' own text, no AI;
+    LONG_WRITER=claude: Claude writes it (needs ANTHROPIC_API_KEY and API credit)."""
+    if os.environ.get("LONG_WRITER", "pagetext").strip().lower() != "claude":
+        from .pagetext import write as from_pages
+        script = from_pages(m)
+        if not script:
+            log.warning("not enough page text for a long video about %s", m["subject"])
+        return script
     if not config.ANTHROPIC_API_KEY:
         log.warning("ANTHROPIC_API_KEY not set; no long video")
         return None

@@ -151,7 +151,11 @@ def grow(conn, series, need):
     """Adds verified tools when fewer than MIN_READY topics can fill a video. Returns tools added."""
     _ensure(conn)
     cat, used = merged(conn, series), used_urls(conn, series)
-    if len(ready_topics(cat, used, need)) >= MIN_READY or not config.ANTHROPIC_API_KEY:
+    if len(ready_topics(cat, used, need)) >= MIN_READY:
+        return 0
+    import os
+    if os.environ.get("CATALOG_GROWTH", "0") != "1" or not config.ANTHROPIC_API_KEY:  # paid: off unless turned on
+        log.info("%s: fewer than %d topics with unused tools; add tools or set CATALOG_GROWTH=1", series, MIN_READY)
         return 0
     last = float(db.kv_get(conn, f"catalog_grown:{series}") or 0)  # last answered request: a failed one retries next run
     if time.time() - last < GROW_EVERY_DAYS * 86400:

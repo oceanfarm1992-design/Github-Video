@@ -153,3 +153,28 @@ class PublishTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PageTextTests(unittest.TestCase):
+    def test_free_script_is_built_only_from_page_text(self):
+        from pipeline.longform import pagetext
+        sec = ("It turns a short idea into a video clip in a few minutes. You type what you want to see and it "
+               "makes the scene. You can change the style, the camera and the length of each shot. ") * 2
+        visuals, facts = [], []
+        for p, name in enumerate(["Alpha", "Beta", "Gamma", "Delta"]):
+            visuals.append({"id": len(visuals), "kind": "overview", "page": p, "label": f"{name} homepage",
+                            "text": f"{name} makes videos from text. See https://x.y for more."})
+            for h in ("Features", "How it works", "Pricing plans"):
+                visuals.append({"id": len(visuals), "kind": "page", "page": p, "label": f"{name}: section '{h}'",
+                                "text": sec})
+            facts.append(f"TOOL: {name}")
+        m = {"format": "tools_top10", "subject": "4 AI tools for video generation", "facts": "\n".join(facts),
+             "visuals": visuals, "links": []}
+        s = pagetext.write(m)
+        self.assertIsNotNone(s)
+        self.assertEqual([c["title"] for c in s["chapters"]], ["Introduction", "Alpha", "Beta", "Gamma", "Delta",
+                                                                "Summary"])
+        text = " ".join(p["text"] for c in s["chapters"] for p in c["paragraphs"])
+        self.assertNotIn("http", text)
+        self.assertEqual(s["cost_usd"], 0.0)
+        self.assertIsNone(pagetext.write({**m, "visuals": visuals[:8]}))  # 2 items: not enough for a long video
