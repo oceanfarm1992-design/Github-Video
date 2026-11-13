@@ -9,7 +9,8 @@ import re
 from .writer import MAX_WORDS, validate
 
 MIN_SCRIPT_WORDS = 700    # shorter than about 6 minutes: no long video that day
-PARA_WORDS = 85           # one paragraph is about 40 seconds on screen
+PARA_WORDS = 55           # the voice model reads one paragraph at a time (about 512 sound units at most)
+SENTENCE_WORDS = 28       # longer sentences (lists run together) are split at commas or cut
 URL_RE = re.compile(r"https?://\S+|www\.\S+")
 
 
@@ -30,7 +31,17 @@ def clean(text):
 
 
 def sentences(text):
-    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    out = []
+    for s in (x.strip() for x in re.split(r"(?<=[.!?])\s+", text)):
+        while s and words(s) > SENTENCE_WORDS:  # split a run-on at a comma/semicolon, else at the word limit
+            ws = s.split()
+            cut = next((i for i in range(SENTENCE_WORDS, 8, -1) if ws[i - 1].endswith((",", ";", ":"))), SENTENCE_WORDS)
+            out.append(" ".join(ws[:cut]).rstrip(",;:") + ".")
+            s = " ".join(ws[cut:])
+            s = s[:1].upper() + s[1:]
+        if s:
+            out.append(s)
+    return out
 
 
 def take(text, limit):
@@ -116,7 +127,7 @@ def write(m):
             title = f"#{rank} {short}"
         else:
             lead, title = f"{short}. {desc}", short
-        paras = [{"text": take(lead, PARA_WORDS + 20), "visual": over["id"]}]
+        paras = [{"text": take(lead, PARA_WORDS), "visual": over["id"]}]
         budget = per_item - words(paras[0]["text"])
         for v in secs:
             text = clean(v.get("text", ""))
