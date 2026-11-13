@@ -7,6 +7,8 @@ import json
 import logging
 import re
 
+from .theme import is_list
+
 log = logging.getLogger("seo")
 
 TITLE_MAX = 92  # YouTube allows 100; " #Shorts" is appended
@@ -57,6 +59,18 @@ SERIES = {
         "keywords": ["open source", "AI tools", "GitHub", "tutorial", "explained", "useful websites"],
         "about": "Full deep dives: GitHub projects, AI tools and websites explained from start to finish.",
         "playlist": "Full Deep Dives",
+    },
+    "kids": {
+        "keywords": ["AI for kids", "AI tools for kids", "kids learning apps", "educational apps for kids",
+                     "AI in the classroom", "parenting tips", "teacher tools"],
+        "about": "AI for Kids: easy AI tools and ideas for parents and teachers. Follow for new ideas every week.",
+        "playlist": "AI Tools for Kids",
+    },
+    "everyday": {
+        "keywords": ["AI for beginners", "AI tools", "how to use AI", "AI made simple", "everyday AI",
+                     "life hacks", "tech tips"],
+        "about": "AI for Normal People: easy AI tools for everyday life, no tech skills needed. Follow for more.",
+        "playlist": "Easy AI Tools for Everyday Life",
     },
     "news": {
         "keywords": ["AI news", "artificial intelligence", "tech news"],
@@ -112,7 +126,7 @@ def subject(c):
         return items[0]["name"] if len(items) == 1 else title.split(": ")[-1]
     if k == "promo":
         return (raw.get("tool") or {}).get("name") or title.split(" - ")[0]
-    if k == "tools":
+    if is_list(k):
         return f"AI tools for {raw.get('phrase', '')}".strip()
     return title
 
@@ -127,6 +141,16 @@ def title(c):
         n = len(raw.get("tools") or [])
         phrase = raw.get("phrase", "").title()
         opts = [f"{n} AI Tools for {phrase} You Should Know", f"{n} AI Tools for {phrase}", hook]
+    elif k == "kids":
+        n = len(raw.get("tools") or [])
+        phrase = raw.get("phrase", "")
+        opts = [f"{n} AI Tools for {phrase[0].upper() + phrase[1:]} (Parents & Teachers)" if phrase else hook,
+                f"{n} AI Tools for {phrase}", hook]
+    elif k == "everyday":
+        n = len(raw.get("tools") or [])
+        phrase = raw.get("phrase", "")
+        opts = [f"{n} Easy AI Tools for {phrase[0].upper() + phrase[1:]} (No Tech Skills Needed)" if phrase else hook,
+                f"{n} Easy AI Tools for {phrase}", hook]
     elif k == "sites":
         opts = [f"Websites That Feel Illegal to Know - Part {raw.get('part', 1)}: {name}", hook]
     elif k == "ranking":
@@ -156,7 +180,7 @@ def title(c):
 def summary(c):
     """One keyword-rich sentence for the top of a description or caption (from verified text only)."""
     k, raw, beats = kind_of(c), _raw(c), _beats(c)
-    if k == "tools":
+    if is_list(k):
         names = [t["name"] for t in raw.get("tools", [])]
         if names:
             more = " and more" if len(names) > 3 else ""
@@ -185,7 +209,7 @@ def youtube_description(c, links=None):
     k, beats = kind_of(c), _beats(c)
     q = (c.get("caption") or "").split("\n\n")
     parts = [c.get("hook") or c.get("title") or "", summary(c)]
-    points = beats[1:5] if k != "tools" else [b for b in beats[:10]]
+    points = beats[1:5] if not is_list(k) else [b for b in beats[:10]]
     if points:
         lines = ["- " + _clip(NUM_RE.sub("", b), 110) for b in points]
         parts.append("In this Short:\n" + "\n".join(lines))
@@ -211,7 +235,7 @@ def youtube_tags(c, budget=450):
         cand += [f"{name} github", f"{name} open source"] + [t.replace("-", " ") for t in raw.get("topics", [])]
         if raw.get("language"):
             cand.append(str(raw["language"]))
-    elif k == "tools":
+    elif is_list(k):
         cand += [f"best AI tools for {raw.get('phrase', '')}", f"AI {raw.get('phrase', '')}"]
         cand += [t["name"] for t in raw.get("tools", [])]
     elif k == "sites":
@@ -265,7 +289,7 @@ def linkedin_caption(c, has_links=True):
     s = summary(c)
     if s and s.lower() not in parts[0].lower():
         parts.append(s)
-    points = beats[1:4] if k != "tools" else []
+    points = beats[1:4] if not is_list(k) else []
     if points:
         parts.append("\n".join("- " + _clip(NUM_RE.sub("", b), 140) for b in points))
     if len(q) > 1 and q[1].strip():
@@ -279,7 +303,7 @@ def linkedin_caption(c, has_links=True):
 
 
 # --------------------------------------------------------------- playlists
-def playlist_id(conn, token, k):
+def playlist_id(conn, token, k, channel="main"):
     """The series playlist (found by title or created once; id cached in kv). Playlists keep viewers
     watching the next video, which is a strong ranking signal."""
     from . import db
@@ -287,7 +311,8 @@ def playlist_id(conn, token, k):
     name = SERIES.get(k, {}).get("playlist")
     if not name:
         return None
-    cached = db.kv_get(conn, f"yt_playlist:{k}")
+    kv_key = f"yt_playlist:{k}" if channel == "main" else f"yt_playlist:{channel}:{k}"
+    cached = db.kv_get(conn, kv_key)
     if cached:
         return cached
     h = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -300,7 +325,7 @@ def playlist_id(conn, token, k):
         _, _, r = request("https://www.googleapis.com/youtube/v3/playlists?part=snippet,status",
                           data=json.dumps(body).encode(), method="POST", headers=h)
         pid = json.loads(r)["id"]
-    db.kv_set(conn, f"yt_playlist:{k}", pid)
+    db.kv_set(conn, kv_key, pid)
     return pid
 
 
@@ -308,7 +333,8 @@ def add_to_playlist(conn, token, c, video_id):
     from .http import request
     try:
         k = "trending" if kind_of(c) == "github" and _raw(c).get("trending") else kind_of(c)
-        pid = playlist_id(conn, token, k)
+        from .channels import of_source
+        pid = playlist_id(conn, token, k, of_source(c.get("tsource")))
         if not pid:
             return False
         body = {"snippet": {"playlistId": pid, "resourceId": {"kind": "youtube#video", "videoId": video_id}}}

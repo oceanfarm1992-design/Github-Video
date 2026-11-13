@@ -234,7 +234,7 @@ class ToolsTests(unittest.TestCase):
         made = []
         olds = (zernio._call, zernio.account, zernio.create_automation)
         zernio._call = boom
-        zernio.account = lambda p: {"_id": "acct1", "profileId": {"_id": "prof1"}}
+        zernio.account = lambda p, ch="main": {"_id": "acct1", "profileId": {"_id": "prof1"}}
         zernio.create_automation = lambda *a: made.append(a[3])
         try:
             c = {"caption": "Hook?\n\nSource: https://x", "hashtags": '["#AI"]', "title": "t",

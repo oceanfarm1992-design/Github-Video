@@ -1,6 +1,9 @@
 """One-time YouTube authorization (loopback OAuth for a Desktop client).
 
-    python tools/youtube_auth.py [client_secret.json]
+    python tools/youtube_auth.py [client_secret.json] [--channel kids|everyday]
+
+--channel stores the token for a sister channel (YOUTUBE_REFRESH_TOKEN_KIDS / _EVERYDAY): on Google's screen,
+pick that channel (brand account) when asked which channel to use.
 
 Opens your browser, you approve the `youtube.upload`, `youtube.readonly` and `youtube.force-ssl` scopes, and the
 refresh token is stored straight into GitHub Actions secrets with the `gh` CLI. Tokens are
@@ -21,7 +24,7 @@ SCOPES = ("https://www.googleapis.com/auth/youtube.upload https://www.googleapis
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    args = [a for i, a in enumerate(sys.argv[1:], 1) if not a.startswith("--") and sys.argv[i - 1] != "--channel"]
     path = args[0] if args else "client_secret.json"
     cfg = json.load(open(path))["installed"]
     state = secrets.token_urlsafe(16)
@@ -61,8 +64,15 @@ def main():
     if "--print" in sys.argv:
         print(rt)
         return
-    for name, val in (("YOUTUBE_CLIENT_ID", cfg["client_id"]), ("YOUTUBE_CLIENT_SECRET", cfg["client_secret"]),
-                      ("YOUTUBE_REFRESH_TOKEN", rt)):
+    channel = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--channel=")), None) or         (sys.argv[sys.argv.index("--channel") + 1] if "--channel" in sys.argv[:-1] else None)
+    if channel:
+        if channel not in ("kids", "everyday"):
+            sys.exit("--channel must be kids or everyday")
+        pairs = ((f"YOUTUBE_REFRESH_TOKEN_{channel.upper()}", rt),)  # same OAuth client as the main channel
+    else:
+        pairs = (("YOUTUBE_CLIENT_ID", cfg["client_id"]), ("YOUTUBE_CLIENT_SECRET", cfg["client_secret"]),
+                 ("YOUTUBE_REFRESH_TOKEN", rt))
+    for name, val in pairs:
         # value via stdin, never argv (argv is visible to other processes)
         subprocess.run(["gh", "secret", "set", name], input=val, text=True, check=True, capture_output=True)
         print("set secret", name)

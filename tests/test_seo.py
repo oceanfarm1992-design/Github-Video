@@ -65,9 +65,9 @@ class StoryTests(unittest.TestCase):
         olds = (zernio._call, zernio.account, zernio.enabled, zernio.available)
         zernio._call = lambda path, body=None, **k: calls.append(body) or {
             "post": {"_id": "s1", "platforms": [{"platform": "instagram", "status": "published"}]}}
-        zernio.account = lambda plat: {"_id": "acc"}
+        zernio.account = lambda plat, ch="main": {"_id": "acc"}
         zernio.enabled = lambda: True
-        zernio.available = lambda plat: True
+        zernio.available = lambda plat, ch="main": True
         try:
             self.assertEqual(zernio.publish_story("instagram", GH, "https://v/x.mp4"), ("s1", ""))
             os.environ["STORIES"] = "1"
@@ -97,7 +97,7 @@ class StoryTests(unittest.TestCase):
                 return {"post": {"_id": "r1", "platforms": [{"platform": "instagram", "status": "processing"}]}}
             return {"post": {"_id": "r1", "platforms": [{"platform": "instagram", "status": next(polls),
                                                          "platformPostUrl": "https://ig/r1"}]}}
-        zernio._call, zernio.account = fake_call, lambda plat: {"_id": "acc"}
+        zernio._call, zernio.account = fake_call, lambda plat, ch="main": {"_id": "acc"}
         zernio.create_automation, zernio.POLL_SECONDS = (lambda *a: None), 0
         try:
             self.assertEqual(zernio.publish_reel("instagram", GH, "https://v/x.mp4"), ("r1", "https://ig/r1"))

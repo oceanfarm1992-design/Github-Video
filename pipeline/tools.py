@@ -135,14 +135,14 @@ def shows_in_browser(url):
 FAILED_RETRY_DAYS = 7  # a category that could not be verified waits this long, so it never blocks the others
 
 
-def candidates(conn):
-    """Catalog categories not used in the last REUSE_DAYS days and not failed recently, in catalog order."""
-    cutoff = time.time() - REUSE_DAYS * 86400
+def candidates(conn, catalog=None, prefix="tools", reuse_days=REUSE_DAYS):
+    """Catalog categories not used in the last reuse_days days and not failed recently, in catalog order."""
+    cutoff = time.time() - reuse_days * 86400
     recent = {r["source"].split(":", 1)[1] for r in conn.execute(
-        "SELECT source FROM topics WHERE source LIKE 'tools:%' AND updated_at>=?", (cutoff,))}
+        "SELECT source FROM topics WHERE source LIKE ? AND updated_at>=?", (prefix + ":%", cutoff))}
     out = []
-    for k in CATALOG:
-        failed = float(db.kv_get(conn, f"tools_failed:{k}") or 0)
+    for k in (catalog or CATALOG):
+        failed = float(db.kv_get(conn, f"{prefix}_failed:{k}") or 0)
         if k not in recent and time.time() - failed >= FAILED_RETRY_DAYS * 86400:
             out.append(k)
     return out
@@ -153,10 +153,11 @@ def next_category(conn):
     return c[0] if c else None
 
 
-def build(conn, category, count=None):
-    """Verify tools for a category and queue a topic. Returns the topic id or None."""
+def build(conn, category, count=None, catalog=None, prefix="tools"):
+    """Verify tools for a category and queue a topic. Returns the topic id or None.
+    catalog/prefix: another series' catalog (sister channels use "kids" and "everyday")."""
     count = count or config.TOOLS_PER_VIDEO
-    phrase, tag, entries = CATALOG[category]
+    phrase, tag, entries = (catalog or CATALOG)[category]
     tools = []
     for name, url in entries:
         if len(tools) >= count:
@@ -179,13 +180,13 @@ def build(conn, category, count=None):
         log.warning("only %d verified tools for %s; not queued", len(tools), category)
         return None
     n = len(tools)
-    tid = db.sha(f"tools:{category}:{db.today()}")[:16]
+    tid = db.sha(f"{prefix}:{category}:{db.today()}")[:16]
     claims = [{"text": f"{t['name']}: {t['description']}", "source": t["url"]} for t in tools]
     conn.execute(
         """INSERT OR IGNORE INTO topics (id,title,source,url,published_at,discovered_at,content_hash,raw,summary,
         claims,source_urls,score,confidence,status,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (tid, f"{n} AI tools for {phrase}", f"tools:{category}", tools[0]["url"], db.now_iso(), db.now_iso(),
-         db.sha(f"tools:{category}:{db.today()}"), db.js({"category": category, "phrase": phrase, "hashtag": tag,
+        (tid, f"{n} AI tools for {phrase}", f"{prefix}:{category}", tools[0]["url"], db.now_iso(), db.now_iso(),
+         db.sha(f"{prefix}:{category}:{db.today()}"), db.js({"category": category, "phrase": phrase, "hashtag": tag,
                                                           "tools": tools}),
          f"{n} AI tools for {phrase}", db.js(claims), db.js([t["url"] for t in tools]), 90, 100, "QUEUED",
          time.time()))

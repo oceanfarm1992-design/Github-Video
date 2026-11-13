@@ -33,7 +33,7 @@ class ScheduleTests(unittest.TestCase):
         import datetime as d
         with mock.patch.object(longform.config, "LONG_EVERY_DAYS", 5), \
              mock.patch.object(longform.config, "LONG_START", "2026-11-01"), \
-             mock.patch.object(longform.config, "LONG_FORMATS", "github,tools,sites"):
+             mock.patch.object(longform.config, "LONG_FORMATS", "github,tools,sites"),              mock.patch.object(longform.config, "CHANNELS_ENABLED", ""):  # main channel only (see test_channels)
             got = {d.date(2026, 11, 1) + d.timedelta(days=i): longform.format_today(d.date(2026, 11, 1) + d.timedelta(days=i))
                    for i in range(16)}
             self.assertEqual([v for v in got.values() if v], ["github", "tools", "sites", "github"])

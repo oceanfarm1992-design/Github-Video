@@ -7,6 +7,8 @@ promo   - Privacy PDF Tools: calm sky blue and green
 ranking - weekly GitHub top 5: green with gold
 recap   - weekly recap: blue with gold
 news    - the original navy and gold
+kids    - AI for Kids (sister channel): night blue with sunny yellow
+everyday- AI for Normal People (sister channel): teal with warm orange
 """
 from dataclasses import dataclass
 
@@ -37,6 +39,11 @@ THEMES = {
                      (255, 214, 102), "WEEKLY TOP 5", "ranking"),
     "recap": Theme("recap", (8, 12, 26), (24, 36, 70), (90, 160, 255), (255, 214, 102), (125, 211, 252),
                    (255, 214, 102), "THIS WEEK", "recap"),
+    # sister channels: friendly, bright looks (not the hacker look of the main channel)
+    "kids": Theme("kids", (12, 20, 48), (30, 64, 120), (255, 196, 61), (255, 230, 120), (110, 231, 183),
+                  (255, 160, 90), "AI FOR KIDS", "promo"),
+    "everyday": Theme("everyday", (10, 26, 30), (20, 70, 76), (45, 212, 191), (153, 246, 228), (253, 186, 116),
+                      (45, 212, 191), "AI MADE SIMPLE", "promo"),
     "news": Theme("news", (14, 16, 28), (44, 48, 72), (90, 160, 255), (255, 214, 102), (110, 180, 255),
                   (255, 214, 102), "AI NEWS", "github"),
 }
@@ -48,10 +55,18 @@ def kind(source):
     source = str(source or "")
     if source == "github":
         return "github"
-    for k in ("tools", "promo", "sites", "ranking", "recap", "long"):
+    for k in ("tools", "promo", "sites", "ranking", "recap", "long", "kids", "everyday"):
         if source.startswith(k + ":"):
             return k
     return "news"
+
+
+# list series: "N AI tools for X", one browser scene per verified tool (same script, render and SEO path)
+LIST_KINDS = ("tools", "kids", "everyday")
+
+
+def is_list(k):
+    return k in LIST_KINDS
 
 
 def for_source(source):

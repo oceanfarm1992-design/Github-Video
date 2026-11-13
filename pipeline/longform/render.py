@@ -187,7 +187,8 @@ def draw_chrome(img, theme, chip, t, total, ticks):
     """Chapter chip (top left), progress bar with chapter ticks (bottom)."""
     tg = visuals.pill(chip, font(30), theme.accent + (230,), (10, 10, 14), pad_x=26)
     img.paste(tg, (PX0, 40), tg)
-    wm = os.environ.get("WATERMARK_TEXT") or ""
+    from ..channels import watermark
+    wm = watermark(theme.name)
     if wm:
         d = ImageDraw.Draw(img)
         d.text((W - PX0 - font(28).getlength(wm), 50), wm, font=font(28), fill=(120, 130, 150))

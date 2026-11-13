@@ -3,14 +3,14 @@ import argparse
 import logging
 import sys
 
-from . import analytics, db, engage, longform, preview, zernio_check, discover, tools, sites, promo, voicetest, filter as filt, generate, publish, qc, ranking, recap, render, research, score, trending
+from . import analytics, channel_series, db, engage, longform, preview, zernio_check, discover, tools, sites, promo, voicetest, filter as filt, generate, publish, qc, ranking, recap, render, research, score, trending
 
 STAGES = {
     "collect": ["discover", "filter"],           # every 30-60 min: cheap metadata
     "research": ["filter", "research", "score"],  # every 3-6 h: only candidates
-    "produce": ["trending", "tools", "sites", "promo", "weekly", "generate", "render", "qc", "publish"],  # daily
+    "produce": ["trending", "tools", "sites", "promo", "channels", "weekly", "generate", "render", "qc", "publish"],  # daily
     "engage": ["engage"],                         # every 30 min: answer keyword comments
-    "draft": ["trending", "tools", "sites", "promo", "weekly", "generate", "render", "qc"],  # make + check videos, never publishes
+    "draft": ["trending", "tools", "sites", "promo", "channels", "weekly", "generate", "render", "qc"],  # make + check videos, never publishes
     "preview": ["preview"],                      # sample render, never publishes
     "voicetest": ["voicetest"],                   # cloned-voice A/B samples, never publishes
     "zernio": ["zernio"],                         # read-only: list Zernio accounts + automations
@@ -34,6 +34,8 @@ def run_stage(name, conn):
         return tools.run(conn)
     if name == "promo":
         return promo.run(conn)
+    if name == "channels":  # sister channels: AI for Kids, AI for Normal People
+        return channel_series.run(conn)
     if name == "sites":
         return sites.run(conn)
     if name == "weekly":  # weekly ranking, weekly recap, and starting today's long video (Mon/Wed/Fri)

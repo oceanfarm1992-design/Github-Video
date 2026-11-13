@@ -73,6 +73,12 @@ jobs:
       LONG_START: ${{ vars.LONG_START || '2026-11-01' }}
       LONG_FORMATS: ${{ vars.LONG_FORMATS || 'github,tools,sites' }}
       LONG_SCHEDULE: ${{ vars.LONG_SCHEDULE || '0:github,2:tools,4:sites' }}
+      # sister channels (AI for Kids, AI for Normal People): see pipeline/channels.py
+      CHANNELS_ENABLED: ${{ vars.CHANNELS_ENABLED || 'kids,everyday' }}
+      CHANNELS_START: ${{ vars.CHANNELS_START || '2026-11-14' }}
+      CHANNEL_SHORT_EVERY_DAYS: ${{ vars.CHANNEL_SHORT_EVERY_DAYS || '2' }}
+      CHANNEL_LONG_EVERY_DAYS: ${{ vars.CHANNEL_LONG_EVERY_DAYS || '5' }}
+      CHANNEL_ACCOUNTS: ${{ vars.CHANNEL_ACCOUNTS }}
       GENERATE_SCORE_NEWS: ${{ vars.GENERATE_SCORE_NEWS || '65' }}
       GENERATE_SOURCES: ${{ github.event.inputs.sources }}
       MAX_RENDERS_PER_TOPIC: ${{ vars.MAX_RENDERS_PER_TOPIC || '2' }}
@@ -164,6 +170,8 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_REFRESH_TOKEN_KIDS: ${{ secrets.YOUTUBE_REFRESH_TOKEN_KIDS }}
+          YOUTUBE_REFRESH_TOKEN_EVERYDAY: ${{ secrets.YOUTUBE_REFRESH_TOKEN_EVERYDAY }}
           ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           META_PAGE_ID: ${{ secrets.META_PAGE_ID }}

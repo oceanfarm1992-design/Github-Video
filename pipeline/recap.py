@@ -32,6 +32,7 @@ def collect(conn, days=7):
     rows = conn.execute(
         """SELECT c.id, c.title, c.video_path, t.source, t.url FROM contents c JOIN topics t ON t.id=c.topic_id
         WHERE t.status='PUBLISHED' AND c.video_path IS NOT NULL AND c.created_at>=? AND t.source NOT LIKE 'recap:%'
+        AND t.source NOT LIKE 'kids:%' AND t.source NOT LIKE 'everyday:%'
         ORDER BY c.created_at""", (time.time() - days * 86400,)).fetchall()
     rows = [dict(r) for r in rows]
     if len(rows) > MAX_CLIPS:

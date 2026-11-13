@@ -8,6 +8,7 @@ import re
 import time
 
 from . import config, db, trending
+from .theme import is_list
 from .http import request
 
 log = logging.getLogger("generate")
@@ -151,21 +152,28 @@ def kind(source):
 
 
 def videos_today(conn, which=None):
+    """Videos made today: of one series, or (which=None) of the main channel only."""
+    from .channels import CHANNELS
     rows = conn.execute(
         "SELECT t.source FROM contents c JOIN topics t ON t.id=c.topic_id WHERE c.created_at>=?",
         (_day_start(),)).fetchall()
-    return sum(1 for r in rows if which is None or kind(r["source"]) == which)
+    kinds = [kind(r["source"]) for r in rows]
+    if which is None:
+        return sum(1 for k in kinds if k not in CHANNELS)
+    return kinds.count(which)
 
 
-def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0, sites_room=0, promo_room=0, ranking_room=0):
-    """Top-scoring rows per category, within each category's remaining daily room and score bar."""
+def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0, sites_room=0, promo_room=0, ranking_room=0,
+         channel_room=None):
+    """Top-scoring rows per category, within each category's remaining daily room and score bar.
+    channel_room: {sister channel: room} (their Shorts have their own schedule, see channels.py)."""
     out = []
     room = {"github": gh_room, "news": news_room, "tools": tools_room, "sites": sites_room, "promo": promo_room,
-            "ranking": ranking_room, "recap": 0}
-    bar = {"github": min_gh, "news": min_news, "tools": 0, "sites": 0, "promo": 0, "ranking": 0, "recap": 0}
+            "ranking": ranking_room, "recap": 0, **(channel_room or {})}
+    bar = {"github": min_gh, "news": min_news}
     for r in sorted(rows, key=lambda r: -r["score"]):
         k = kind(r["source"])
-        if room[k] > 0 and r["score"] >= bar[k]:
+        if room.get(k, 0) > 0 and r["score"] >= bar.get(k, 0):
             out.append(r)
             room[k] -= 1
     return out
@@ -197,6 +205,10 @@ def hashtags(row):
     k = kind(row["source"])
     if k == "tools":
         tags = ["#AITools", "#AI", raw.get("hashtag") or "#Tech", "#ArtificialIntelligence", "#TechTips"]
+    elif k == "kids":
+        tags = ["#AIForKids", raw.get("hashtag") or "#KidsLearning", "#Parenting", "#EdTech", "#Teachers"]
+    elif k == "everyday":
+        tags = ["#AIMadeSimple", raw.get("hashtag") or "#LifeHacks", "#AITools", "#TechTips", "#EverydayAI"]
     elif k == "sites":
         tags = ["#UsefulWebsites", "#WebsitesYouShouldKnow", "#Websites", "#TechTips", "#Internet"]
     elif k == "promo":
@@ -219,7 +231,13 @@ def tools_script(row):
     raw = json.loads(row["raw"] or "{}")
     tools = raw.get("tools", [])
     n = len(tools)
-    hook = f"Looking for AI tools for {raw.get('phrase', 'your work')}? Here are {n}."
+    k = kind(row["source"])
+    if k == "kids":  # the channel speaks to parents and teachers, not to children
+        hook = f"Parents and teachers: looking for AI tools for {raw.get('phrase', 'kids')}? Here are {n}."
+    elif k == "everyday":
+        hook = f"Want AI to help with {raw.get('phrase', 'everyday life')}? Here are {n} easy tools."
+    else:
+        hook = f"Looking for AI tools for {raw.get('phrase', 'your work')}? Here are {n}."
     beats = [f"{i}. {t['name']}: {t['description']}" for i, t in enumerate(tools, 1)]
     links = "Here are the links:\n" + "\n".join(f"{i}. {t['name']} - {t['url']}" for i, t in enumerate(tools, 1))
     return hook, beats, links
@@ -269,6 +287,10 @@ def caption_question(row):
     k = kind(row["source"])
     if k == "tools":
         return "Which one would you try first?"
+    if k == "kids":
+        return "Which one would your kids enjoy most?"
+    if k == "everyday":
+        return "Which one will you try this week?"
     if k == "sites":
         return "Which one did you not know about?"
     if k == "promo":
@@ -287,8 +309,6 @@ def promo_script(row):
 
 def run(conn):
     room = min(config.MAX_VIDEOS_PER_DAY - videos_today(conn), config.MAX_VIDEOS_PER_RUN)
-    if room <= 0:
-        return 0
     rows = conn.execute("SELECT * FROM topics WHERE status='QUEUED' AND renders<?",
                         (config.MAX_RENDERS_PER_TOPIC,)).fetchall()
     wanted = [s.strip() for s in os.environ.get("GENERATE_SOURCES", "").split(",") if s.strip()]
@@ -298,20 +318,24 @@ def run(conn):
 
     def quota(k, n):
         return (n if turn in (None, k) else 0) - videos_today(conn, k)
-    rows = pick(rows, quota("github", config.DAILY_GITHUB_VIDEOS),
+    main = pick(rows, quota("github", config.DAILY_GITHUB_VIDEOS),
                 config.DAILY_NEWS_VIDEOS - videos_today(conn, "news"),
                 config.GENERATE_SCORE, min(config.GENERATE_SCORE, config.GENERATE_SCORE_NEWS),
                 quota("tools", config.DAILY_TOOLS_VIDEOS),
                 quota("sites", config.DAILY_SITES_VIDEOS),
                 quota("promo", config.DAILY_PROMO_VIDEOS),
-                1 - videos_today(conn, "ranking"))
-    rows = by_rotation(rows, videos_today(conn))[:room]
+                1 - videos_today(conn, "ranking")) if room > 0 else []
+    # sister channels: one Short on each channel's day, in a produce run the main channel does not need
+    from . import channels
+    sister = pick(rows, 0, 0, 0, 0, channel_room={k: int(channels.short_due(k)) - videos_today(conn, k)
+                                                   for k in channels.CHANNELS})
+    rows = (by_rotation(main, videos_today(conn))[:room] + sister)[:config.MAX_VIDEOS_PER_RUN]
     n = 0
     for row in rows:
         try:
             db.set_status(conn, row["id"], "GENERATING")
             claims = json.loads(row["claims"] or "[]")
-            if kind(row["source"]) == "tools":  # facts come from each tool's own site; no LLM rewrite
+            if is_list(kind(row["source"])):  # facts come from each tool's own site; no LLM rewrite
                 hook, beats, response = tools_script(row)
                 cta = "TOOL"
                 outro = series_outro(cta, response)

@@ -145,9 +145,9 @@ def _visuals_for(items):
     return visuals
 
 
-def tools_review(conn, used, out_dir):
-    for category, (phrase, _tag, entries) in tools.CATALOG.items():
-        if f"tools:{category}" in used:
+def tools_review(conn, used, out_dir, catalog=None, fmt="tools"):
+    for category, (phrase, _tag, entries) in (catalog or tools.CATALOG).items():
+        if f"{fmt}:{category}" in used:
             continue
         pages, items = _site_pages(entries, out_dir, need=5, max_items=8, min_sections=2)
         if not items:
@@ -155,7 +155,7 @@ def tools_review(conn, used, out_dir):
         facts = "\n\n".join(f"TOOL {i}: {it['name']} ({it['url']})\nDescription: {it['description']}"
                             for i, it in enumerate(items, 1))
         visuals = _visuals_for(items)
-        return {"format": "tools", "subject": f"AI tools for {phrase}", "key": f"tools:{category}",
+        return {"format": fmt, "subject": f"AI tools for {phrase}", "key": f"{fmt}:{category}",
                 "facts": facts, "visuals": visuals, "pages": pages,
                 "links": [(it["name"], it["url"]) for it in items],
                 "material_words": words(facts) + sum(words(v.get("text", "")) for v in visuals)}
@@ -180,7 +180,15 @@ def sites_tour(conn, used, out_dir):
             "material_words": words(facts) + sum(words(v.get("text", "")) for v in visuals)}
 
 
-BUILDERS = {"github": github, "tools": tools_review, "sites": sites_tour}
+def _sister(fmt):
+    def build(conn, used, out_dir):
+        from ..channel_series import CATALOGS
+        return tools_review(conn, used, out_dir, CATALOGS[fmt], fmt)
+    return build
+
+
+BUILDERS = {"github": github, "tools": tools_review, "sites": sites_tour,
+            "kids": _sister("kids"), "everyday": _sister("everyday")}
 
 
 def collect(conn, fmt, used):

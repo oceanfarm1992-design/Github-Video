@@ -123,7 +123,7 @@ def sections_of(topic):
 def tools_of(topic):
     """The verified tools list of an AI-tools topic, else None."""
     try:
-        if topic and str(topic["source"]).startswith(("tools:", "sites:", "ranking:")):
+        if topic and str(topic["source"]).startswith(("tools:", "sites:", "ranking:", "kids:", "everyday:")):
             return json.loads(topic["raw"] or "{}").get("tools") or None
     except (KeyError, IndexError, TypeError, ValueError):
         pass
@@ -302,7 +302,7 @@ def render(content, topic=None, conn=None):
     gh = {}
     tools = tools_of(topic)
     # 10-tool lists may run to 88 s (YouTube/Instagram); website parts stay under Facebook's 60 s
-    max_seconds = MAX_SECONDS_TOOLS if tools and kind in ("tools", "ranking") else MAX_SECONDS
+    max_seconds = MAX_SECONDS_TOOLS if tools and kind in ("tools", "ranking", "kids", "everyday") else MAX_SECONDS
     scene_pages = scene_labels = scene_focus = None
     card = page = page_url = None
     sections = sections_of(topic)
@@ -375,7 +375,7 @@ def render(content, topic=None, conn=None):
         total = 30.0
     if total > max_seconds:
         raise RuntimeError(f"script too long for a Short: {total:.0f}s")
-    n_items = len(scenes) - 2 if kind in ("tools", "ranking") else None
+    n_items = len(scenes) - 2 if kind in ("tools", "ranking", "kids", "everyday") else None
     intro = storyboard.intro(kind, topic, content["title"], n_items, gh)
     endcard = storyboard.endcard(kind, topic, n_items)
 
@@ -404,7 +404,8 @@ def render(content, topic=None, conn=None):
 
     # 2) lay out the video: fills the cues (transitions, call to action, end card) for the sound design
     events = []
-    gen = motion.frames(scenes, card, audio, os.environ.get("WATERMARK_TEXT"), page, page_url,
+    from .channels import of_source, watermark
+    gen = motion.frames(scenes, card, audio, watermark(of_source(topic["source"] if topic else "")) or None, page, page_url,
                         scene_pages=scene_pages, scene_labels=scene_labels, scene_focus=scene_focus,
                         disclaimer=DISCLAIMER if is_sites else None, events=events, theme=theme,
                         intro=intro, endcard=endcard, scene_visuals=scene_visuals, scene_logos=scene_logos)

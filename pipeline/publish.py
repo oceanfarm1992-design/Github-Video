@@ -37,13 +37,16 @@ def _post(url, data, headers=None):
 
 
 # ---------------------------------------------------------------- YouTube
-def youtube_token():
-    """Prefer a refresh-token flow (tokens expire in 1h); fall back to a raw access token."""
-    cid, sec, rt = (os.environ.get(k) for k in ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"))
+def youtube_token(channel="main"):
+    """Prefer a refresh-token flow (tokens expire in 1h); fall back to a raw access token (main only).
+    Each sister channel has its own refresh token (same OAuth client)."""
+    from .channels import youtube_refresh_token
+    cid, sec = os.environ.get("YOUTUBE_CLIENT_ID"), os.environ.get("YOUTUBE_CLIENT_SECRET")
+    rt = youtube_refresh_token(channel)
     if cid and sec and rt:
         return _post("https://oauth2.googleapis.com/token", {
             "client_id": cid, "client_secret": sec, "refresh_token": rt, "grant_type": "refresh_token"})["access_token"]
-    return os.environ.get("YOUTUBE_ACCESS_TOKEN") or None
+    return (os.environ.get("YOUTUBE_ACCESS_TOKEN") or None) if channel == "main" else None
 
 
 def link_block(response):
@@ -173,8 +176,10 @@ def instagram_reel(c, video_url):
     return media["id"], json.loads(r).get("permalink", "")
 
 
-def platforms():
-    """name -> (needs_public_url, callable); only platforms with credentials."""
+def platforms(channel="main"):
+    """name -> (needs_public_url, callable); only platforms with credentials for this channel."""
+    if channel != "main":
+        return sister_platforms(channel)
     out = {}
     if youtube_token_available():
         out["youtube"] = (False, None)
@@ -197,14 +202,34 @@ def platforms():
     return out
 
 
+def sister_platforms(channel):
+    """A sister channel posts only to its own YouTube channel and its own Zernio accounts (Facebook,
+    Instagram, TikTok, plus the Stories); nothing goes to the main channel's accounts."""
+    out = {}
+    if youtube_token_available(channel):
+        out["youtube"] = (False, None)
+    if zernio.enabled():
+        for plat in ("facebook", "instagram", "tiktok"):
+            if zernio.available(plat, channel):
+                out[plat] = (True, lambda c, url, plat=plat: zernio.publish_reel(plat, c, url, channel))
+        if os.environ.get("STORIES", "1") != "0":
+            for plat in ("instagram", "facebook"):
+                if zernio.available(plat, channel):
+                    out[f"{plat}_story"] = (True, lambda c, url, plat=plat: zernio.publish_story(plat, c, url, channel))
+    return out
+
+
 # platform length limits (seconds); longer videos skip that platform but still go everywhere else
 MAX_SECONDS = {"facebook": 60, "instagram_story": 60, "facebook_story": 120}
 
 
-def youtube_token_available():
+def youtube_token_available(channel="main"):
+    from .channels import youtube_refresh_token
     e = os.environ
-    return bool(e.get("YOUTUBE_ACCESS_TOKEN") or (e.get("YOUTUBE_CLIENT_ID") and e.get("YOUTUBE_CLIENT_SECRET")
-                                                   and e.get("YOUTUBE_REFRESH_TOKEN")))
+    client = e.get("YOUTUBE_CLIENT_ID") and e.get("YOUTUBE_CLIENT_SECRET")
+    if channel != "main":
+        return bool(client and youtube_refresh_token(channel))
+    return bool(e.get("YOUTUBE_ACCESS_TOKEN") or (client and e.get("YOUTUBE_REFRESH_TOKEN")))
 
 
 def video_seconds(path, url=None):
@@ -282,7 +307,8 @@ def run(conn):
             log.info("removed %d hosted videos older than 14 days", removed)
     except Exception as e:
         log.warning("release cleanup failed: %s", e)
-    configured = platforms()
+    from .channels import of_source
+    by_channel = {}
     rows = conn.execute(
         "SELECT c.*, t.id AS tid, t.source AS tsource, t.raw AS traw FROM contents c JOIN topics t ON t.id=c.topic_id "
         "WHERE t.status IN ('READY','WAITING_FOR_API') AND c.status='qc_passed'").fetchall()
@@ -291,6 +317,10 @@ def run(conn):
         c = dict(c)
         m = conn.execute("SELECT cta_keyword, response FROM cta_map WHERE video_id=?", (c["id"],)).fetchone()
         c["_cta"] = {"keyword": m["cta_keyword"], "response": m["response"]} if m else None
+        channel = of_source(c["tsource"])
+        if channel not in by_channel:
+            by_channel[channel] = platforms(channel)
+        configured = by_channel[channel]
         if not configured:
             db.set_status(conn, c["tid"], "WAITING_FOR_API", "no platform credentials")
             continue
@@ -320,7 +350,7 @@ def run(conn):
                     post_id, url = prior
                     log.info("%s already has %s on %s; recording, not re-posting", c["title"], post_id, name)
                 elif name == "youtube":
-                    tok = youtube_token()
+                    tok = youtube_token(channel)
                     links = link_block((c.get("_cta") or {}).get("response"))
                     post_id, url = youtube_upload(tok, c, links)
                     seo.add_to_playlist(conn, tok, c, post_id)

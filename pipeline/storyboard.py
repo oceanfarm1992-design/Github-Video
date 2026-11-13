@@ -52,6 +52,10 @@ def intro(kind, topic, title, n_items=None, gh=None):
         return {"tag": tag, "title": head, "sub": title}
     if kind == "tools":
         return {"title": f"{n_items} AI tools for {raw.get('phrase', 'your work')}", "sub": None}
+    if kind == "kids":
+        return {"title": f"{n_items} AI tools for {raw.get('phrase', 'kids')}", "sub": "For parents and teachers"}
+    if kind == "everyday":
+        return {"title": f"{n_items} AI tools for {raw.get('phrase', 'everyday life')}", "sub": "No tech skills needed"}
     if kind == "sites":
         items = raw.get("tools") or [{}]
         name = items[0].get("name") if len(items) == 1 else None
@@ -70,6 +74,9 @@ def endcard(kind, topic, n_items=None):
     if kind == "tools":
         return {"question": "Which one would you use?", "options": [str(i) for i in range(1, (n_items or 3) + 1)],
                 "line": "More AI tools every day" if config.DAILY_TOOLS_VIDEOS >= 1 else None}
+    if kind in ("kids", "everyday"):
+        return {"question": "Which one will you try?", "options": [str(i) for i in range(1, (n_items or 3) + 1)],
+                "line": "Follow for more easy AI ideas"}
     if kind == "sites":
         return {"question": "Did you know this website?", "options": ["YES", "NO"],
                 "line": f"Part {raw.get('part', 1) + 1} tomorrow" if config.DAILY_SITES_VIDEOS >= 1 else None}

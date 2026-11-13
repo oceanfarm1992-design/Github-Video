@@ -67,6 +67,19 @@ def run(conn=None):
         hook, beats, links = generate.tools_script(row)
         script = {"hook": hook, "beats": beats, "outro": generate.series_outro("TOOL", links)}
         path = render.render({"script": json.dumps(script), "title": row["title"]}, row)
+    elif os.environ.get("GENERATE_SOURCES", "").strip() in ("kids", "everyday"):  # sister channels
+        from . import channel_series
+        key = os.environ["GENERATE_SOURCES"].strip()
+        catalog = channel_series.CATALOGS[key]
+        mem = db.connect(":memory:")
+        tid = tools.build(mem, os.environ.get("PREVIEW_TOOLS_CATEGORY") or next(iter(catalog)),
+                          config.CHANNEL_TOOLS_PER_VIDEO, catalog, key)
+        if not tid:
+            return {"error": "not enough verified tools"}
+        row = mem.execute("SELECT * FROM topics WHERE id=?", (tid,)).fetchone()
+        hook, beats, links = generate.tools_script(row)
+        script = {"hook": hook, "beats": beats, "outro": generate.series_outro("TOOL", links)}
+        path = render.render({"script": json.dumps(script), "title": row["title"]}, row)
     else:
         path = render.render({"script": json.dumps(SAMPLE), "title": "QingYunA/answer-me-with-html"}, TOPIC)
     dest = Path(config.OUT_DIR) / "video" / "preview.mp4"

@@ -105,7 +105,7 @@ class EngageTests(unittest.TestCase):
         patches = {
             (supa, "configured"): fake.configured, (supa, "select"): fake.select, (supa, "upsert"): fake.upsert,
             (supa, "insert_once"): fake.insert_once, (supa, "update"): fake.update, (supa, "delete"): fake.delete,
-            (engage, "youtube_token"): lambda: "tok", (engage, "yt_own_channel"): lambda t: "me",
+            (engage, "youtube_token"): lambda ch="main": "tok", (engage, "yt_own_channel"): lambda t: "me",
             (engage, "yt_comments"): lambda *a: iter(comments),
             (engage, "yt_reply"): lambda tok, cid, text: sent.append((cid, text)),
             (engage.llm, "call_json"): fake_llm,
@@ -174,7 +174,7 @@ class DmFallbackTests(unittest.TestCase):
         ]
         dms, public = [], []
 
-        def fake_private(pid, plat, cid, text):
+        def fake_private(pid, plat, cid, text, ch="main"):
             if cid == "k2":
                 return "already"  # the Zernio automation got there first
             dms.append((cid, text))
@@ -183,10 +183,10 @@ class DmFallbackTests(unittest.TestCase):
         patches = {
             (supa, "configured"): fake.configured, (supa, "select"): fake.select, (supa, "upsert"): fake.upsert,
             (supa, "insert_once"): fake.insert_once, (supa, "update"): fake.update, (supa, "delete"): fake.delete,
-            (engage.zernio, "available"): lambda plat: True, (engage.zernio, "enabled"): lambda: True,
-            (engage.zernio, "list_comments"): lambda pid, plat: iter(comments),
+            (engage.zernio, "available"): lambda plat, ch="main": True, (engage.zernio, "enabled"): lambda: True,
+            (engage.zernio, "list_comments"): lambda pid, plat, ch="main": iter(comments),
             (engage.zernio, "private_reply"): fake_private,
-            (engage.zernio, "reply_comment"): lambda pid, plat, cid, text: public.append((cid, text)),
+            (engage.zernio, "reply_comment"): lambda pid, plat, cid, text, ch="main": public.append((cid, text)),
         }
         engage.REPLY_DELAY = (0, 0)
         olds = {k: getattr(*k) for k in patches}

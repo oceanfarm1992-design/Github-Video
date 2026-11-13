@@ -68,6 +68,13 @@ BRIEFS = {
                "parts the README actually explains."),
     "tools": ("A full review of the AI tools below, one chapter per tool, in the order given: what each tool is "
               "and what its own website says it does. No rankings and no claims of 'best'."),
+    "kids": ("A full review, for parents and teachers, of the AI tools below that children can use or learn "
+             "with, one chapter per tool, in the order given: what each tool is and what its own website says it "
+             "does. Speak to the adults, not to the children. No rankings, no claims of 'best', and no claims about "
+             "age suitability, safety or privacy unless the material states them."),
+    "everyday": ("A friendly full review of the AI tools below for people who are not into tech, one chapter per "
+                 "tool, in the order given: what each tool is and what its own website says it helps with in "
+                 "everyday life. Explain any technical word in plain language. No rankings and no claims of 'best'."),
     "sites": ("A full tour of the websites below, one chapter per website, in the order given, in the series "
               "'Websites that feel illegal to know' (they are all legal; say so once in the introduction). "
               "Explain what each site lets you do, section by section, from its own pages."),

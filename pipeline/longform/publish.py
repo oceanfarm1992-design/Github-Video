@@ -11,6 +11,7 @@ from ..http import request
 log = logging.getLogger("longform.publish")
 AI_VOICE = "Narrated with an AI clone of the creator's own voice. Facts come from each project's or site's own pages."
 TAGS = {"github": ["#OpenSource", "#GitHub", "#AI"], "tools": ["#AITools", "#AI", "#Tech"],
+        "kids": ["#AIForKids", "#EdTech", "#Parenting"], "everyday": ["#AIMadeSimple", "#AITools", "#EverydayAI"],
         "sites": ["#UsefulWebsites", "#Websites", "#TechTips"]}
 
 
@@ -31,8 +32,19 @@ def description(m, script, chapters):
     return "\n\n".join(p for p in parts if p)[:4900]
 
 
+def channel_of(m):
+    """The YouTube/Facebook channel a long video goes to (sister-channel formats have their own)."""
+    from ..channels import CHANNELS
+    return m["format"] if m["format"] in CHANNELS else "main"
+
+
+def channel_ready(fmt):
+    """True when the sister channel can publish a long video somewhere (YouTube or Facebook)."""
+    return short_publish.youtube_token_available(fmt) or zernio.available("facebook", fmt)
+
+
 def youtube(conn, m, script, mp4, chapters, thumb):
-    tok = short_publish.youtube_token()
+    tok = short_publish.youtube_token(channel_of(m))
     if not tok:
         return None
     tags = [t[:60] for t in script.get("tags", [])][:12]
@@ -60,12 +72,13 @@ def youtube(conn, m, script, mp4, chapters, thumb):
 
 
 def facebook(m, script, mp4, chapters):
-    if not zernio.available("facebook"):
+    channel = channel_of(m)
+    if not zernio.available("facebook", channel):
         return None
     url = short_publish.public_asset_url(str(mp4), "video/mp4")
     if not url:
         raise RuntimeError("no public video URL (run inside GitHub Actions)")
-    acct = zernio.account("facebook")
+    acct = zernio.account("facebook", channel)
     text = f"{script['title']}\n\n{script['description']}\n\n" + "\n".join(f"{stamp(t)} {title}" for t, title in chapters)
     body = {"content": text[:5000], "mediaItems": [{"type": "video", "url": url}],
             "platforms": [{"platform": "facebook", "accountId": acct["_id"],

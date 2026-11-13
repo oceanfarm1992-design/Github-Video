@@ -46,6 +46,12 @@ LONG_EVERY_DAYS = _i("LONG_EVERY_DAYS", 5)
 LONG_START = os.environ.get("LONG_START", "2026-11-01")
 LONG_FORMATS = os.environ.get("LONG_FORMATS", "github,tools,sites")
 LONG_SCHEDULE = os.environ.get("LONG_SCHEDULE", "0:github,2:tools,4:sites")
+# sister channels (pipeline/channels.py): "AI for Kids" and "AI for Normal People"
+CHANNELS_ENABLED = os.environ.get("CHANNELS_ENABLED", "kids,everyday")
+CHANNELS_START = os.environ.get("CHANNELS_START", "2026-11-14")
+CHANNEL_SHORT_EVERY_DAYS = _i("CHANNEL_SHORT_EVERY_DAYS", 2)   # a Short every 2 days per channel
+CHANNEL_LONG_EVERY_DAYS = _i("CHANNEL_LONG_EVERY_DAYS", 5)     # a long video every 5 days per channel (0 = off)
+CHANNEL_TOOLS_PER_VIDEO = _i("CHANNEL_TOOLS_PER_VIDEO", 5)     # 5 tools keep a Short under 60 s (Facebook Reels)
 # at most this many videos per produce run; two daily produce slots catch up if GitHub drops one schedule
 MAX_VIDEOS_PER_RUN = _i("MAX_VIDEOS_PER_RUN", 1)
 GENERATE_SCORE_NEWS = _i("GENERATE_SCORE_NEWS", 65)

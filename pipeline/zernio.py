@@ -31,22 +31,19 @@ def _call(path, body=None, method=None, timeout=None, idempotency_key=None):
 _accounts = None
 
 
-def account(platform):
-    """First connected account for the platform (override with ZERNIO_<PLATFORM>_ACCOUNT_ID)."""
+def account(platform, channel="main"):
+    """The channel's connected account for the platform (channels.pick_account), or None."""
     global _accounts
-    override = os.environ.get(f"ZERNIO_{platform.upper()}_ACCOUNT_ID")
+    from .channels import pick_account
     if _accounts is None:
         data = _call("/accounts")
         _accounts = data.get("accounts", data) if isinstance(data, dict) else data
-    for a in _accounts:
-        if a.get("platform") == platform and (not override or a.get("_id") == override):
-            return a
-    return None
+    return pick_account(_accounts, platform, channel, os.environ.get(f"ZERNIO_{platform.upper()}_ACCOUNT_ID"))
 
 
-def available(platform):
+def available(platform, channel="main"):
     try:
-        return enabled() and account(platform) is not None
+        return enabled() and account(platform, channel) is not None
     except Exception as e:
         log.warning("zernio accounts lookup failed: %s", e)
         return False
@@ -84,11 +81,16 @@ def wait_published(post_id, platform, timeout=REEL_WAIT_SECONDS):
         time.sleep(POLL_SECONDS)
 
 
-def publish_reel(platform, c, video_url):
-    from .publish import social_caption  # local import: publish imports this module
+def publish_reel(platform, c, video_url, channel="main"):
     """Returns (platform_post_id, url). Raises on failure."""
-    acct = account(platform)
-    data = {"shareToFeed": True} if platform == "instagram" else {"contentType": "reel", "title": c["title"][:100]}
+    from .publish import social_caption  # local import: publish imports this module
+    acct = account(platform, channel)
+    if platform == "instagram":
+        data = {"shareToFeed": True}
+    elif platform == "tiktok":  # settings go in a top-level tiktokSettings object (docs.zernio.com/platforms/tiktok)
+        data = {}
+    else:
+        data = {"contentType": "reel", "title": c["title"][:100]}
     if platform == "instagram" and c.get("_cover_url"):  # the hook frame as the Reel cover in the grid
         data["instagramThumbnail"] = c["_cover_url"]
     body = {
@@ -97,6 +99,10 @@ def publish_reel(platform, c, video_url):
         "platforms": [{"platform": platform, "accountId": acct["_id"], "platformSpecificData": data}],
         "publishNow": True,
     }
+    if platform == "tiktok":  # TikTok requires the preview and consent confirmations on every post
+        body["tiktokSettings"] = {"privacy_level": "PUBLIC_TO_EVERYONE", "allow_comment": True, "allow_duet": True,
+                                  "allow_stitch": True, "content_preview_confirmed": True,
+                                  "express_consent_given": True}
     import uuid
     key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"post|{acct['_id']}|{video_url}"))
     try:
@@ -130,9 +136,9 @@ def publish_reel(platform, c, video_url):
     return pid, plat.get("platformPostUrl", "")
 
 
-def publish_story(platform, c, video_url):
+def publish_story(platform, c, video_url, channel="main"):
     """The same video as a Story (24 h, no caption shown; viewers reply by DM). Returns (post_id, url)."""
-    acct = account(platform)
+    acct = account(platform, channel)
     body = {"mediaItems": [{"type": "video", "url": video_url}],
             "platforms": [{"platform": platform, "accountId": acct["_id"],
                            "platformSpecificData": {"contentType": "story"}}],
@@ -224,9 +230,9 @@ def create_automation(platform, acct, platform_post_id, zernio_post_id, c):
 
 
 # ------------------------------------------------------------- comments
-def list_comments(zernio_post_id, platform):
+def list_comments(zernio_post_id, platform, channel="main"):
     """Top-level comments on a Zernio post (cached by Zernio for up to 10 minutes)."""
-    acct = account(platform)
+    acct = account(platform, channel)
     cursor = None
     for _ in range(5):  # at most 500 comments per post per run
         q = f"?accountId={acct['_id']}&limit=100" + (f"&cursor={cursor}" if cursor else "")
@@ -242,10 +248,10 @@ def list_comments(zernio_post_id, platform):
             break
 
 
-def reply_comment(zernio_post_id, platform, comment_id, text):
+def reply_comment(zernio_post_id, platform, comment_id, text, channel="main"):
     """Public reply to one comment. Idempotency-Key makes a retried call post only once."""
     import uuid
-    acct = account(platform)
+    acct = account(platform, channel)
     key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{acct['_id']}|{zernio_post_id}|{comment_id}|{text}"))
     h = {"Authorization": f"Bearer {os.environ['ZERNIO_API_KEY']}", "Content-Type": "application/json",
          "Idempotency-Key": key}
@@ -271,10 +277,10 @@ def platform_post_id(zernio_post_id):
     return _platform_ids.get(zernio_post_id) or zernio_post_id
 
 
-def private_reply(zernio_post_id, platform, comment_id, text):
+def private_reply(zernio_post_id, platform, comment_id, text, channel="main"):
     """Send the commenter a DM (Meta private reply). Meta allows ONE per comment, within 7 days.
     Returns "sent", or "already" when that comment's private reply was used (e.g. by the automation)."""
-    acct = account(platform)
+    acct = account(platform, channel)
     pid = platform_post_id(zernio_post_id)
     try:
         _call(f"/inbox/comments/{pid}/{comment_id}/private-reply", {"accountId": acct["_id"], "message": text[:1000]})

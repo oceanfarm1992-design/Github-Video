@@ -16,6 +16,7 @@ from ..theme import kind as series_kind
 
 log = logging.getLogger("longform")
 FORMATS = ("github", "tools", "sites")
+SISTER_FORMATS = ("kids", "everyday")  # sister channels' long videos (channels.long_due)
 
 
 def schedule():
@@ -31,6 +32,12 @@ def schedule():
 def format_today(today=None):
     """Today's long-video format, or None. today: a datetime.date (default: today, UTC)."""
     today = today or datetime.datetime.now(datetime.timezone.utc).date()
+    from .. import channels
+    main = _main_format(today)
+    return main or channels.long_due(today)
+
+
+def _main_format(today):
     if config.LONG_EVERY_DAYS <= 0:
         return schedule().get(today.weekday())
     formats = [f.strip() for f in config.LONG_FORMATS.split(",") if f.strip() in FORMATS]
@@ -79,6 +86,8 @@ def run(conn, fmt=None, publish_it=True):
     fmt = fmt or format_today()
     if not fmt:
         return {"skipped": "not a long-video day"}
+    if publish_it and fmt in SISTER_FORMATS and not publish.channel_ready(fmt):
+        return {"skipped": f"{fmt} channel has no YouTube token or Facebook account connected yet"}
     if publish_it and publish.done_today(db.today()):
         return {"skipped": "already published today"}
     used = publish.used_keys()
