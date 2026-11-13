@@ -153,15 +153,15 @@ def grow(conn, series, need):
     cat, used = merged(conn, series), used_urls(conn, series)
     if len(ready_topics(cat, used, need)) >= MIN_READY or not config.ANTHROPIC_API_KEY:
         return 0
-    last = float(db.kv_get(conn, f"catalog_grow:{series}") or 0)
+    last = float(db.kv_get(conn, f"catalog_grown:{series}") or 0)  # last answered request: a failed one retries next run
     if time.time() - last < GROW_EVERY_DAYS * 86400:
         return 0
-    db.kv_set(conn, f"catalog_grow:{series}", str(time.time()))
     try:
         topics, cost = _ask(series, cat, used, need)
     except Exception as e:
         log.warning("catalog suggestion for %s failed: %s", series, e)
         return 0
+    db.kv_set(conn, f"catalog_grown:{series}", str(time.time()))
     conn.execute("INSERT INTO spend VALUES (?,1,?) ON CONFLICT(day) DO UPDATE SET calls=calls+1, usd=usd+?",
                  (db.today(), cost, cost))
     known = {norm(u) for _, _, e in cat.values() for _, u in e}
