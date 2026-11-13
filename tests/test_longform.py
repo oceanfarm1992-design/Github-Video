@@ -178,3 +178,14 @@ class PageTextTests(unittest.TestCase):
         self.assertNotIn("http", text)
         self.assertEqual(s["cost_usd"], 0.0)
         self.assertIsNone(pagetext.write({**m, "visuals": visuals[:8]}))  # 2 items: not enough for a long video
+
+
+class VoiceChunkTests(unittest.TestCase):
+    def test_long_paragraphs_are_read_in_pieces_the_voice_model_can_take(self):
+        from pipeline.render import CLONE_CHARS, clone_chunks
+        text = ("One two three, four five six seven eight nine ten eleven twelve thirteen fourteen fifteen, " * 6) + "End."
+        pieces = clone_chunks(text)
+        self.assertGreater(len(pieces), 1)
+        self.assertTrue(all(len(p) <= CLONE_CHARS for p in pieces))
+        self.assertEqual(" ".join(pieces).split(), text.split())  # nothing lost or added
+        self.assertEqual(clone_chunks("Short one."), ["Short one."])

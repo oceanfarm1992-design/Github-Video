@@ -230,19 +230,53 @@ def speech_text(t):
     return t
 
 
+CLONE_CHARS = 220  # StyleTTS2 reads at most 512 sound units at a time: longer text is read in pieces
+
+
+def clone_chunks(text, limit=CLONE_CHARS):
+    """Sentence-sized pieces of at most `limit` characters (long sentences split at commas, then words)."""
+    out = []
+    for sent in re.split(r"(?<=[.!?])\s+", text.strip()):
+        while len(sent) > limit:
+            cut = max(sent.rfind(", ", 0, limit), sent.rfind("; ", 0, limit))
+            cut = cut + 1 if cut > limit // 3 else (sent.rfind(" ", 0, limit) if sent.rfind(" ", 0, limit) > 0 else limit)
+            out.append(sent[:cut].strip())
+            sent = sent[cut:].strip()
+        if not sent:
+            continue
+        if out and len(out[-1]) + 1 + len(sent) <= limit:
+            out[-1] = out[-1] + " " + sent
+        else:
+            out.append(sent)
+    return out or [text]
+
+
 def narrate_clone(texts, out_dir):
     from voiceclone import synthesize
     style = style_key()
     clips = []
+
+    def say(text, dest):
+        # rvc="off": this job installs only the StyleTTS2 engine, not the RVC one
+        return synthesize(text, str(dest), engine="styletts2", style=style, rvc="off",
+                          voice_ref_repo=os.environ["VOICE_REF_REPO"],
+                          voice_ref_cache=str(out_dir / ".voice_reference.mp3"))
     for t in texts:
         p = out_dir / f"{db.sha(f'clone{SPEED}{style}' + t)[:24]}.wav"
         if not p.exists():
             raw = out_dir / f"{db.sha(f'clone{style}' + t)[:24]}.raw.wav"
             if not raw.exists():
-                # rvc="off": this job installs only the StyleTTS2 engine, not the RVC one
-                used = synthesize(speech_text(t), str(raw), engine="styletts2", style=style, rvc="off",
-                                  voice_ref_repo=os.environ["VOICE_REF_REPO"],
-                                  voice_ref_cache=str(out_dir / ".voice_reference.mp3"))
+                pieces = clone_chunks(speech_text(t))
+                if len(pieces) == 1:
+                    used = say(pieces[0], raw)
+                else:  # one clip per piece, joined into the paragraph's clip
+                    parts = [out_dir / f"{raw.stem}.{i}.wav" for i in range(len(pieces))]
+                    for piece, part in zip(pieces, parts):
+                        used = say(piece, part)
+                    lst = out_dir / f"{raw.stem}.txt"
+                    lst.write_text("".join(f"file '{x.resolve().as_posix()}'\n" for x in parts), encoding="utf-8")
+                    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst),
+                                    "-c", "copy", str(raw)], check=True, timeout=120)
                 log.info("voice engine: %s", used)
             # pitch-preserving speed-up (atempo)
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-filter:a",
