@@ -40,8 +40,9 @@ def run_stage(name, conn):
         return sites.run(conn)
     if name == "weekly":  # weekly ranking, weekly recap, and starting today's long video (Mon/Wed/Fri)
         return {"ranking": ranking.run(conn), "recap": recap.run(conn), "long": longform.dispatch_if_due(conn)}
-    if name == "long":
-        return longform.run(conn)
+    if name == "long":  # the produce run passes the format in `sources`; without it, today's first
+        import os
+        return longform.run(conn, fmt=(os.environ.get("GENERATE_SOURCES") or "").strip() or None)
     if name == "longpreview":
         import os
         return longform.run(conn, fmt=(os.environ.get("GENERATE_SOURCES") or "github").strip(), publish_it=False)

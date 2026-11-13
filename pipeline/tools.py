@@ -197,6 +197,9 @@ def run(conn):
     """Queue one tools video if none is waiting and today's tools quota is not used yet."""
     if config.DAILY_TOOLS_VIDEOS <= 0:
         return 0
+    from .generate import kind_today
+    if kind_today() not in (None, "tools"):
+        return 0
     waiting = conn.execute(
         "SELECT COUNT(*) FROM topics WHERE source LIKE 'tools:%' AND status IN "
         "('QUEUED','GENERATING','RENDERING','QC','READY','RETRY')").fetchone()[0]

@@ -182,8 +182,23 @@ def pick(rows, gh_room, news_room, min_gh, min_news, tools_room=0, sites_room=0,
 ROTATION = ("github", "tools", "github", "sites", "promo")  # one video per slot through the day
 
 
+def weekly_shorts():
+    """{weekday: series} from WEEKLY_SHORTS ("1:github,2:sites"), {} when unset."""
+    out = {}
+    for part in (config.WEEKLY_SHORTS or "").split(","):
+        day, _, k = part.strip().partition(":")
+        if day.strip().isdigit() and k.strip() in ROTATION:
+            out[int(day)] = k.strip()
+    return out
+
+
 def kind_today(today=None):
-    """The series whose turn it is today (DAILY_ROTATION, one step per day); None = no rotation."""
+    """The series whose turn it is today: WEEKLY_SHORTS by weekday ("" = no Short today), else
+    DAILY_ROTATION one step per day; None = no rotation (every series with a quota)."""
+    weekly = weekly_shorts()
+    if weekly:
+        today = today or datetime.datetime.now(datetime.timezone.utc).date()
+        return weekly.get(today.weekday(), "")
     seq = [k.strip() for k in config.DAILY_ROTATION.split(",") if k.strip() in ROTATION]
     if not seq:
         return None

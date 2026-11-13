@@ -47,6 +47,13 @@ class Tests(unittest.TestCase):
         filt.run(self.conn)
         self.assertEqual(self.conn.execute("SELECT status FROM topics").fetchone()[0], "FILTERED")
 
+    def test_weekly_shorts_by_weekday(self):
+        import datetime as d
+        with mock.patch.object(generate.config, "WEEKLY_SHORTS", "1:github,2:sites,3:tools,4:promo"):
+            week = [generate.kind_today(d.date(2026, 11, 16) + d.timedelta(days=i)) for i in range(7)]  # Mon..Sun
+            self.assertEqual(week, ["", "github", "sites", "tools", "promo", "", ""])
+
+    @mock.patch.object(generate.config, "WEEKLY_SHORTS", "")
     def test_daily_rotation_cycles_one_series_per_day(self):
         import datetime as d
         with mock.patch.object(generate.config, "DAILY_ROTATION", "github,tools,sites"):

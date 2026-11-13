@@ -15,7 +15,7 @@ from .. import config, db
 from ..theme import kind as series_kind
 
 log = logging.getLogger("longform")
-FORMATS = ("github", "tools", "sites")
+FORMATS = ("github", "tools", "sites", "github_top10", "tools_top10", "pdf_tour")
 SISTER_FORMATS = ("kids", "everyday")  # sister channels' long videos (channels.long_due)
 
 
@@ -32,14 +32,25 @@ def schedule():
 def format_today(today=None):
     """Today's long-video format, or None. today: a datetime.date (default: today, UTC)."""
     today = today or datetime.datetime.now(datetime.timezone.utc).date()
+    found = formats_today(today)
+    return found[0] if found else None
+
+
+def formats_today(today=None):
+    """Every long video due today: the main channel's, then a sister channel's (each its own run)."""
     from .. import channels
-    main = _main_format(today)
-    return main or channels.long_due(today)
+    today = today or datetime.datetime.now(datetime.timezone.utc).date()
+    return [f for f in (_main_format(today), channels.long_due(today)) if f]
+
+
+def pdf_tour_due(today):
+    """First PDF_TOUR_WEEKDAY of the month: the monthly full tour of Privacy PDF Tools."""
+    return 0 <= config.PDF_TOUR_WEEKDAY <= 6 and today.weekday() == config.PDF_TOUR_WEEKDAY and today.day <= 7
 
 
 def _main_format(today):
     if config.LONG_EVERY_DAYS <= 0:
-        return schedule().get(today.weekday())
+        return schedule().get(today.weekday()) or ("pdf_tour" if pdf_tour_due(today) else None)
     formats = [f.strip() for f in config.LONG_FORMATS.split(",") if f.strip() in FORMATS]
     try:
         n = (today - datetime.date.fromisoformat(config.LONG_START)).days
@@ -64,20 +75,20 @@ def skip_short(conn, c):
 
 
 def dispatch_if_due(conn):
-    """Called by the produce run: starts today's long-video run once."""
+    """Called by the produce run: starts each of today's long videos once, each as its own run."""
     from . import publish
-    if not format_today():
-        return 0
-    key = f"long-dispatched:{db.today()}"
-    if conn.execute("SELECT 1 FROM kv WHERE key=?", (key,)).fetchone():
-        return 0
-    try:
-        if publish.dispatch():
-            conn.execute("INSERT INTO kv (key, value) VALUES (?,?)", (key, str(time.time())))
-            return 1
-    except Exception as e:
-        log.warning("could not start the long-video run: %s", e)
-    return 0
+    started = 0
+    for fmt in formats_today():
+        key = f"long-dispatched:{db.today()}:{fmt}"
+        if conn.execute("SELECT 1 FROM kv WHERE key=?", (key,)).fetchone():
+            continue
+        try:
+            if publish.dispatch(fmt):
+                conn.execute("INSERT INTO kv (key, value) VALUES (?,?)", (key, str(time.time())))
+                started += 1
+        except Exception as e:
+            log.warning("could not start the %s long-video run: %s", fmt, e)
+    return started
 
 
 def run(conn, fmt=None, publish_it=True):
@@ -88,8 +99,10 @@ def run(conn, fmt=None, publish_it=True):
         return {"skipped": "not a long-video day"}
     if publish_it and fmt in SISTER_FORMATS and not publish.channel_ready(fmt):
         return {"skipped": f"{fmt} channel has no YouTube token or Facebook account connected yet"}
-    if publish_it and publish.done_today(db.today()):
-        return {"skipped": "already published today"}
+    if publish_it and fmt not in formats_today():
+        return {"skipped": f"{fmt} is not due today"}
+    if publish_it and publish.done_today(db.today(), fmt):
+        return {"skipped": f"{fmt} already published today"}
     used = publish.used_keys()
     m = material.collect(conn, fmt, used)
     if not m:
@@ -117,5 +130,5 @@ def run(conn, fmt=None, publish_it=True):
     if any(k in result and not str(result[k]).startswith("failed") for k in ("youtube_long", "facebook_long")):
         for key in m.get("site_keys", []):
             publish.record("long_subject", key, "-", "")
-        publish.record("long_day", db.today(), m["key"], "")
+        publish.record("long_day", f"{db.today()}:{fmt}", m["key"], "")
     return result

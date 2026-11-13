@@ -12,7 +12,9 @@ log = logging.getLogger("longform.publish")
 AI_VOICE = "Narrated with an AI clone of the creator's own voice. Facts come from each project's or site's own pages."
 TAGS = {"github": ["#OpenSource", "#GitHub", "#AI"], "tools": ["#AITools", "#AI", "#Tech"],
         "kids": ["#AIForKids", "#EdTech", "#Parenting"], "everyday": ["#AIMadeSimple", "#AITools", "#EverydayAI"],
-        "sites": ["#UsefulWebsites", "#Websites", "#TechTips"]}
+        "sites": ["#UsefulWebsites", "#Websites", "#TechTips"],
+        "github_top10": ["#GitHub", "#OpenSource", "#Top10"], "tools_top10": ["#AITools", "#AI", "#Tech"],
+        "pdf_tour": ["#PDFTools", "#Privacy", "#Productivity"]}
 
 
 def stamp(sec):
@@ -93,38 +95,42 @@ def facebook(m, script, mp4, chapters):
 
 
 def used_keys():
-    """Subjects already covered by a long video (Supabase), so none is repeated."""
+    """{subject key: last published_at} of long videos already made (Supabase), so none is repeated
+    (weekly formats with a fixed catalog reuse the subject published longest ago)."""
     if not supa.configured():
         log.warning("Supabase not configured: long videos cannot check for repeated subjects")
-        return set()
+        return {}
     try:
         rows = supa.select("published_posts", platform="in.(youtube_long,facebook_long,long_subject)",
-                           select="topic_id")
-        return {r["topic_id"] for r in rows}
+                           select="topic_id,published_at")
+        out = {}
+        for r in rows:
+            out[r["topic_id"]] = max(out.get(r["topic_id"]) or "", r.get("published_at") or "")
+        return out
     except Exception as e:
         log.warning("could not read used long-video subjects: %s", e)
-        return set()
+        return {}
 
 
 def record(platform, key, post_id, url):
     short_publish.record_published(platform, key, post_id, url)
 
 
-def done_today(day):
+def done_today(day, fmt):
     if not supa.configured():
         return False
     try:
-        return bool(supa.select("published_posts", platform="eq.long_day", topic_id=f"eq.{day}"))
+        return bool(supa.select("published_posts", platform="eq.long_day", topic_id=f"eq.{day}:{fmt}"))
     except Exception:
         return False
 
 
-def dispatch():
-    """Starts the `long` stage as its own workflow run (its own queue and time limit)."""
+def dispatch(fmt):
+    """Starts the `long` stage for one format as its own workflow run (its own queue and time limit)."""
     repo, token = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_TOKEN")
     if not repo or not token:
         return False
     request(f"https://api.github.com/repos/{repo}/actions/workflows/pipeline.yml/dispatches", method="POST",
-            data=json.dumps({"ref": os.environ.get("GITHUB_REF_NAME", "main"), "inputs": {"stage": "long"}}).encode(),
+            data=json.dumps({"ref": os.environ.get("GITHUB_REF_NAME", "main"), "inputs": {"stage": "long", "sources": fmt}}).encode(),
             headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
     return True

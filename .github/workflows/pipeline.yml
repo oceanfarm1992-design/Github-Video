@@ -64,15 +64,17 @@ jobs:
       DAILY_TOOLS_VIDEOS: ${{ vars.DAILY_TOOLS_VIDEOS || '1' }}
       DAILY_PROMO_VIDEOS: ${{ vars.DAILY_PROMO_VIDEOS || '1' }}
       TOOLS_PER_VIDEO: ${{ vars.TOOLS_PER_VIDEO || '10' }}
-      RANKING_WEEKDAY: ${{ vars.RANKING_WEEKDAY || '6' }}
-      RECAP_WEEKDAY: ${{ vars.RECAP_WEEKDAY || '5' }}
+      RANKING_WEEKDAY: ${{ vars.RANKING_WEEKDAY || '-1' }}
+      RECAP_WEEKDAY: ${{ vars.RECAP_WEEKDAY || '-1' }}
+      WEEKLY_SHORTS: ${{ vars.WEEKLY_SHORTS || '1:github,2:sites,3:tools,4:promo' }}
+      PDF_TOUR_WEEKDAY: ${{ vars.PDF_TOUR_WEEKDAY || '2' }}
       YT_FIRST_COMMENT: ${{ vars.YT_FIRST_COMMENT || '1' }}
       MUSIC_FLAVOR: ${{ vars.MUSIC_FLAVOR }}
       DAILY_ROTATION: ${{ vars.DAILY_ROTATION || 'github,tools,github,sites,promo' }}
-      LONG_EVERY_DAYS: ${{ vars.LONG_EVERY_DAYS || '5' }}
+      LONG_EVERY_DAYS: ${{ vars.LONG_EVERY_DAYS || '0' }}  # 0: weekday plan (LONG_SCHEDULE) + monthly PDF tour
       LONG_START: ${{ vars.LONG_START || '2026-11-01' }}
       LONG_FORMATS: ${{ vars.LONG_FORMATS || 'github,tools,sites' }}
-      LONG_SCHEDULE: ${{ vars.LONG_SCHEDULE || '0:github,2:tools,4:sites' }}
+      LONG_SCHEDULE: ${{ vars.LONG_SCHEDULE || '0:github_top10,5:tools_top10' }}
       # sister channels (AI for Kids, AI for Normal People): see pipeline/channels.py
       CHANNELS_ENABLED: ${{ vars.CHANNELS_ENABLED || 'kids,everyday' }}
       CHANNELS_START: ${{ vars.CHANNELS_START || '2026-11-14' }}

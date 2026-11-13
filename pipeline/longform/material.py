@@ -145,17 +145,21 @@ def _visuals_for(items):
     return visuals
 
 
-def tools_review(conn, used, out_dir, catalog=None, fmt="tools"):
-    for category, (phrase, _tag, entries) in (catalog or tools.CATALOG).items():
-        if f"{fmt}:{category}" in used:
-            continue
-        pages, items = _site_pages(entries, out_dir, need=5, max_items=8, min_sections=2)
+def tools_review(conn, used, out_dir, catalog=None, fmt="tools", need=5, max_items=8, repeat=False):
+    """repeat: when every category was used, start again with the one used longest ago."""
+    cats = list((catalog or tools.CATALOG).items())
+    fresh = [c for c in cats if f"{fmt}:{c[0]}" not in used]
+    if repeat and not fresh:
+        fresh = sorted(cats, key=lambda c: used.get(f"{fmt}:{c[0]}") or "")
+    for category, (phrase, _tag, entries) in fresh:
+        pages, items = _site_pages(entries, out_dir, need=need, max_items=max_items, min_sections=2)
         if not items:
             continue
         facts = "\n\n".join(f"TOOL {i}: {it['name']} ({it['url']})\nDescription: {it['description']}"
                             for i, it in enumerate(items, 1))
         visuals = _visuals_for(items)
-        return {"format": fmt, "subject": f"AI tools for {phrase}", "key": f"{fmt}:{category}",
+        subject = f"{len(items)} AI tools for {phrase}" if fmt == "tools_top10" else f"AI tools for {phrase}"
+        return {"format": fmt, "subject": subject, "key": f"{fmt}:{category}",
                 "facts": facts, "visuals": visuals, "pages": pages,
                 "links": [(it["name"], it["url"]) for it in items],
                 "material_words": words(facts) + sum(words(v.get("text", "")) for v in visuals)}
@@ -187,7 +191,71 @@ def _sister(fmt):
     return build
 
 
+def github_top10(conn, used, out_dir):
+    """The week's 10 new repositories with the most GitHub stars, each with its page and README sections."""
+    import urllib.parse
+    from .. import ranking
+    from ..http import get_json, gh_headers
+    week = time.strftime("%G-W%V", time.gmtime())
+    since = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 7 * 86400))
+    q = f"created:>={since} stars:>={ranking.MIN_STARS} fork:false archived:false"
+    data, _ = get_json(conn, ranking.SEARCH + urllib.parse.quote(q), gh_headers(), ttl=3600)
+    pages, items = [], []
+    for r in data.get("items", []):
+        if len(items) >= 10:
+            break
+        desc = ranking.clean(r.get("description"), limit=300)
+        if not desc:
+            continue
+        page, secs = capture.capture(r["html_url"], out_dir, max_css_height=6000)
+        sections = _clean_sections(secs, limit=5)
+        if not page or not sections:
+            continue
+        pages.append((str(page), r["html_url"], r["full_name"]))
+        items.append({"name": r["full_name"], "url": r["html_url"], "description": desc, "sections": sections,
+                      "stars": r["stargazers_count"], "language": r.get("language"), "page": len(pages) - 1})
+    if len(items) < 6:
+        log.info("only %d repos with a usable page this week", len(items))
+        return None
+    for rank, it in enumerate(items, 1):
+        it["rank"] = rank
+    countdown = list(reversed(items))
+    facts = "\n\n".join(f"RANK {it['rank']}: {it['name']} ({it['url']})\nStars: {it['stars']:,}\n"
+                         f"Language: {it.get('language')}\nDescription: {it['description']}" for it in countdown)
+    visuals = _visuals_for(countdown)
+    n = len(items)
+    return {"format": "github_top10", "subject": f"Top {n} new GitHub repos this week", "key": f"github_top10:{week}",
+            "facts": f"Ranked by GitHub stars among repositories created since {since}.\n\n" + facts,
+            "visuals": visuals, "pages": pages, "links": [(it["name"], it["url"]) for it in countdown],
+            "material_words": words(facts) + sum(words(v.get("text", "")) for v in visuals)}
+
+
+def tools_top10(conn, used, out_dir):
+    return tools_review(conn, used, out_dir, fmt="tools_top10", need=7, max_items=10, repeat=True)
+
+
+def pdf_tour(conn, used, out_dir):
+    """Every tool of Privacy PDF Tools from its own page (the owner's site), once a month."""
+    from .. import promo
+    month = time.strftime("%Y-%m", time.gmtime())
+    if f"pdf_tour:{month}" in used:
+        return None
+    entries = [(slug.replace("-", " ").title(), url) for slug, url in promo.discover()]
+    pages, items = _site_pages(entries, out_dir, need=5, max_items=12, min_sections=1)
+    if not items:
+        return None
+    facts = (f"WEBSITE: {promo.BRAND} ({promo.SITE})\n\n" +
+             "\n\n".join(f"TOOL {i}: {it['name']} ({it['url']})\nDescription: {it['description']}"
+                          for i, it in enumerate(items, 1)))
+    visuals = _visuals_for(items)
+    return {"format": "pdf_tour", "subject": f"{promo.BRAND}: full tour", "key": f"pdf_tour:{month}",
+            "facts": facts, "visuals": visuals, "pages": pages,
+            "links": [(promo.BRAND, promo.SITE)] + [(it["name"], it["url"]) for it in items],
+            "material_words": words(facts) + sum(words(v.get("text", "")) for v in visuals)}
+
+
 BUILDERS = {"github": github, "tools": tools_review, "sites": sites_tour,
+            "github_top10": github_top10, "tools_top10": tools_top10, "pdf_tour": pdf_tour,
             "kids": _sister("kids"), "everyday": _sister("everyday")}
 
 

@@ -254,6 +254,9 @@ def run(conn):
     """Queue the next part if none is waiting and the daily quota is on."""
     if config.DAILY_SITES_VIDEOS <= 0:
         return 0
+    from .generate import kind_today
+    if kind_today() not in (None, "sites"):
+        return 0
     waiting = conn.execute(
         "SELECT COUNT(*) FROM topics WHERE source LIKE 'sites:%' AND status IN "
         "('QUEUED','GENERATING','RENDERING','QC','READY','RETRY')").fetchone()[0]

@@ -110,6 +110,9 @@ def run(conn):
     """Queue the next promo video if none is waiting and the daily quota is on."""
     if config.DAILY_PROMO_VIDEOS <= 0:
         return 0
+    from .generate import kind_today
+    if kind_today() not in (None, "promo"):
+        return 0
     waiting = conn.execute(
         "SELECT COUNT(*) FROM topics WHERE source LIKE 'promo:%' AND status IN "
         "('QUEUED','GENERATING','RENDERING','QC','READY','RETRY')").fetchone()[0]

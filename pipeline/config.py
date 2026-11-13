@@ -23,6 +23,9 @@ MAX_LLM_CALLS_PER_DAY = _i("MAX_LLM_CALLS_PER_DAY", 100)
 MAX_VIDEOS_PER_DAY = _i("MAX_VIDEOS_PER_DAY", 1)
 # one Short a day, the series taking turns day by day (empty = every series with a quota runs each day)
 DAILY_ROTATION = os.environ.get("DAILY_ROTATION", "github,tools,github,sites,promo")
+# main channel Shorts by weekday (0 = Monday): one series a day, no Short on unlisted days. Takes precedence
+# over DAILY_ROTATION; empty falls back to it.
+WEEKLY_SHORTS = os.environ.get("WEEKLY_SHORTS", "1:github,2:sites,3:tools,4:promo")
 MAX_RENDERS_PER_TOPIC = _i("MAX_RENDERS_PER_TOPIC", 2)
 MIN_TOPIC_SCORE = _i("MIN_TOPIC_SCORE", 65)
 GENERATE_SCORE = _i("GENERATE_SCORE", 75)  # GitHub bar; real scores top out near 80
@@ -36,16 +39,18 @@ DAILY_TOOLS_VIDEOS = _i("DAILY_TOOLS_VIDEOS", 1)   # "N AI tools for <category>"
 DAILY_PROMO_VIDEOS = _i("DAILY_PROMO_VIDEOS", 1)   # one Privacy PDF Tools tool per day
 TOOLS_PER_VIDEO = _i("TOOLS_PER_VIDEO", 10)
 # weekly formats (0 = Monday ... 6 = Sunday; -1 turns the format off)
-RANKING_WEEKDAY = _i("RANKING_WEEKDAY", 6)  # "Top 5 new GitHub repos this week", ranked by stars
+RANKING_WEEKDAY = _i("RANKING_WEEKDAY", -1)  # "Top 5 new GitHub repos this week", ranked by stars
 RANKING_SIZE = _i("RANKING_SIZE", 5)
-RECAP_WEEKDAY = _i("RECAP_WEEKDAY", 5)      # 30-second recap of the week's videos
+RECAP_WEEKDAY = _i("RECAP_WEEKDAY", -1)      # 30-second recap of the week's videos
 YT_FIRST_COMMENT = _i("YT_FIRST_COMMENT", 1)  # post the link as the first YouTube comment
 # long videos (YouTube + Facebook): one every LONG_EVERY_DAYS days, counted from LONG_START, rotating through
 # LONG_FORMATS. LONG_EVERY_DAYS=0 falls back to LONG_SCHEDULE (weekday:format pairs; empty turns them off).
-LONG_EVERY_DAYS = _i("LONG_EVERY_DAYS", 5)
+LONG_EVERY_DAYS = _i("LONG_EVERY_DAYS", 0)
 LONG_START = os.environ.get("LONG_START", "2026-11-01")
 LONG_FORMATS = os.environ.get("LONG_FORMATS", "github,tools,sites")
-LONG_SCHEDULE = os.environ.get("LONG_SCHEDULE", "0:github,2:tools,4:sites")
+LONG_SCHEDULE = os.environ.get("LONG_SCHEDULE", "0:github_top10,5:tools_top10")
+# monthly long video: full tour of Privacy PDF Tools on the first <weekday> of each month (-1 = off)
+PDF_TOUR_WEEKDAY = _i("PDF_TOUR_WEEKDAY", 2)
 # sister channels (pipeline/channels.py): "AI for Kids" and "AI for Normal People"
 CHANNELS_ENABLED = os.environ.get("CHANNELS_ENABLED", "kids,everyday")
 CHANNELS_START = os.environ.get("CHANNELS_START", "2026-11-14")

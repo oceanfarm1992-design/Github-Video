@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -280,7 +281,8 @@ class ToolsTests(unittest.TestCase):
 
 
 class ToolsRotationTests(unittest.TestCase):
-    def test_failed_category_does_not_block_the_next(self):
+    @mock.patch("pipeline.generate.kind_today", return_value=None)
+    def test_failed_category_does_not_block_the_next(self, _turn):
         from pipeline import db
         conn = db.connect(os.path.join(tempfile.mkdtemp(), "r.db"))
         first, second = list(tools.CATALOG)[:2]

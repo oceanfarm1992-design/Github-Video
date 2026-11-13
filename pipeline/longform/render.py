@@ -370,10 +370,13 @@ class Frames:
 
 
 # ------------------------------------------------------------------ render
+SERIES_OF = {"github_top10": "ranking", "tools_top10": "tools", "pdf_tour": "promo"}  # long format -> series look
+
+
 def render(m, script, out_dir):
     """Renders the long video; returns (mp4_path, chapters [(seconds, title)], thumbnail_path)."""
     out_dir = Path(out_dir)
-    theme = THEMES.get(m["format"], THEMES["github"])
+    theme = THEMES.get(SERIES_OF.get(m["format"], m["format"]), THEMES["github"])
     texts = [p["text"] for ch in script["chapters"] for p in ch["paragraphs"]]
     clips = short_render.narrate(texts, out_dir)
     if not clips:
@@ -385,7 +388,8 @@ def render(m, script, out_dir):
     cues += [(segs[-1][1], "end")]
     audio = voice
     try:
-        source = "github" if m["format"] == "github" else f"{m['format']}:long"
+        series = SERIES_OF.get(m["format"], m["format"])
+        source = "github" if series == "github" else f"{series}:long"
         track = music.track("hacker", total, out_dir, music.flavor_for(source))
         audio = short_render.mix_music(voice, track, total, out_dir / f"{stem}_mix.m4a", cues)
         audio = short_render.mix_sfx(audio, sfx.track(cues, total, out_dir / f"{stem}_sfx.wav"), total,

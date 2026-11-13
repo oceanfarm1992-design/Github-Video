@@ -75,6 +75,16 @@ BRIEFS = {
     "everyday": ("A friendly full review of the AI tools below for people who are not into tech, one chapter per "
                  "tool, in the order given: what each tool is and what its own website says it helps with in "
                  "everyday life. Explain any technical word in plain language. No rankings and no claims of 'best'."),
+    "github_top10": ("A countdown of the top 10 new GitHub repositories of the week, ranked by their GitHub star "
+                     "counts as given in the material: one chapter per repository, from the lowest rank to rank 1. "
+                     "For each: its rank and star count, what it is, the problem it solves and what its README "
+                     "shows. The ranking is by stars only; do not call any repository the best."),
+    "tools_top10": ("A full review of the 10 AI tools below, one chapter per tool, in the order given: what each "
+                    "tool is and what its own website says it does. The list is a selection, not a ranking: never "
+                    "call a tool the best or number one."),
+    "pdf_tour": ("A full guided tour of Privacy PDF Tools, the channel creator's own website, one chapter per tool "
+                 "in the order given: what each tool does and how to use it, from its own page. Say what the site "
+                 "says about privacy only in its own words."),
     "sites": ("A full tour of the websites below, one chapter per website, in the order given, in the series "
               "'Websites that feel illegal to know' (they are all legal; say so once in the introduction). "
               "Explain what each site lets you do, section by section, from its own pages."),
