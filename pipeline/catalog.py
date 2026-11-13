@@ -133,6 +133,11 @@ def _ask(series, cat, used, need):
         f"topic's key, phrase and hashtag exactly);\n"
         f"- one new topic (short kebab-case key, a phrase that completes '10 AI tools for ...', a hashtag) with "
         f"{need + 4} tools.\nOnly tools you are confident exist today.")
+    from . import gemini
+    if gemini.available():  # free tier; every suggestion is checked live before it is used
+        out = gemini.generate_json(prompt + '\n\nAnswer with JSON only: {"topics": [{"key": str, "phrase": str, '
+                                   '"hashtag": str, "tools": [{"name": str, "url": str}]}]}')
+        return (out or {}).get("topics", []) if isinstance(out, dict) else [], 0.0
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     # fallbacks="default": a safety decline is re-run server-side on Anthropic's recommended fallback model
     msg = client.beta.messages.create(
@@ -154,7 +159,9 @@ def grow(conn, series, need):
     if len(ready_topics(cat, used, need)) >= MIN_READY:
         return 0
     import os
-    if os.environ.get("CATALOG_GROWTH", "0") != "1" or not config.ANTHROPIC_API_KEY:  # paid: off unless turned on
+    from . import gemini
+    paid_ok = os.environ.get("CATALOG_GROWTH", "0") == "1" and config.ANTHROPIC_API_KEY
+    if not (gemini.available() or paid_ok):  # Gemini free tier, or Claude when turned on (paid)
         log.info("%s: fewer than %d topics with unused tools; add tools or set CATALOG_GROWTH=1", series, MIN_READY)
         return 0
     last = float(db.kv_get(conn, f"catalog_grown:{series}") or 0)  # last answered request: a failed one retries next run

@@ -148,10 +148,42 @@ def _call(prompt):
     return json.loads(text), cost
 
 
+SHAPE = ('Answer with JSON only: {"title": str, "description": str, "tags": [str], "chapters": [{"title": str, '
+         '"paragraphs": [{"text": str, "visual": int}]}]}.')
+
+
+def write_gemini(m):
+    """Script written by Gemini (free tier) under the same checks as Claude's; None if it fails them twice."""
+    from .. import gemini
+    target = target_words(m["material_words"])
+    problems = None
+    for attempt in range(2):
+        script = gemini.generate_json(_prompt(m, target, problems) + "\n\n" + SHAPE, system=SYSTEM)
+        if not isinstance(script, dict) or not isinstance(script.get("chapters"), list):
+            return None
+        try:
+            problems = validate(script, m, target)
+        except (KeyError, TypeError):
+            return None
+        if not problems:
+            log.info("gemini long script for %s: %d chapters", m["subject"], len(script["chapters"]))
+            script["cost_usd"] = 0.0
+            return script
+        log.warning("gemini script attempt %d rejected: %s", attempt + 1, problems)
+    return None
+
+
 def write(m):
     """Validated script dict, or None. LONG_WRITER=pagetext (default, free): the pages' own text, no AI;
     LONG_WRITER=claude: Claude writes it (needs ANTHROPIC_API_KEY and API credit)."""
-    if os.environ.get("LONG_WRITER", "pagetext").strip().lower() != "claude":
+    mode = os.environ.get("LONG_WRITER", "auto").strip().lower()
+    from .. import gemini
+    if mode in ("auto", "gemini") and gemini.available():
+        script = write_gemini(m)
+        if script:
+            return script
+        log.warning("gemini script not usable; using the pages' own text")
+    if mode != "claude":
         from .pagetext import write as from_pages
         script = from_pages(m)
         if not script:

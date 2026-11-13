@@ -76,12 +76,9 @@ def _budget():
     return (r["calls"], r["usd"]) if r else (0, 0.0)
 
 
-def llm_rewrite(conn, row, claims):
-    """Returns (hook, beats) or None. Skips (never exceeds) when budget/cap/key is missing."""
-    if not config.ANTHROPIC_API_KEY:
-        return None
+def _rewrite_prompt(row, claims):
     facts = [t for t in (clean_claim(c["text"]) for c in claims) if t]
-    prompt = (
+    return (
         "Write a 35-second vertical-video script for developers scrolling Shorts, as JSON "
         "{\"hooks\": [str, str, str], \"best\": int, \"beats\": [str, str, str]}. "
         "Draft three different hooks, then set best to the index (0-2) of the one most likely to stop the scroll. "
@@ -93,6 +90,35 @@ def llm_rewrite(conn, row, claims):
         "repeat the same fact. Plain spoken English: short sentences, no filler words, no hype. If the facts are "
         "thin, return fewer beats (minimum 2). Do not add statistics or links. "
         "Each beat under 22 words.\nTitle: " + row["title"] + "\nFacts:\n- " + "\n- ".join(facts))
+
+
+def _checked(row, claims, out):
+    """The model's script if it passes the same checks as Claude's (question hook, no unsourced numbers)."""
+    if not isinstance(out, dict):
+        return None
+    facts = [t for t in (clean_claim(c["text"]) for c in claims) if t]
+    hooks = out.get("hooks") if isinstance(out.get("hooks"), list) else [out.get("hook")]
+    best = out.get("best") if isinstance(out.get("best"), int) and 0 <= out.get("best") < len(hooks) else 0
+    ranked = [hooks[best]] + hooks[:best] + hooks[best + 1:]
+    hook = next((h for h in ranked if isinstance(h, str) and h.strip().endswith("?")), None)
+    beats = out.get("beats")
+    if not hook or not isinstance(beats, list) or not beats:
+        return None
+    result = {"hook": hook, "beats": [str(b) for b in beats[:max(2, min(4, len(facts) + 1))]]}
+    if numbers(" ".join([hook] + result["beats"])) - numbers(row["title"] + " " + " ".join(facts)):
+        return None
+    return result
+
+
+def llm_rewrite(conn, row, claims):
+    """Returns (hook, beats) or None. Gemini free tier when its key is set, else Claude within the budget."""
+    from . import gemini
+    if gemini.available():
+        return _checked(row, claims, gemini.generate_json(_rewrite_prompt(row, claims), max_tokens=2000))
+    if not config.ANTHROPIC_API_KEY:
+        return None
+    prompt = _rewrite_prompt(row, claims)
+    facts = [t for t in (clean_claim(c["text"]) for c in claims) if t]
     model = config.SCRIPT_MODEL
     key = db.sha(model + prompt)
     cached = conn.execute("SELECT response FROM llm_cache WHERE key=?", (key,)).fetchone()

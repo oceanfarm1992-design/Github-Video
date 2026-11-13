@@ -1,3 +1,4 @@
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -189,3 +190,27 @@ class VoiceChunkTests(unittest.TestCase):
         self.assertTrue(all(len(p) <= CLONE_CHARS for p in pieces))
         self.assertEqual(" ".join(pieces).split(), text.split())  # nothing lost or added
         self.assertEqual(clone_chunks("Short one."), ["Short one."])
+
+
+class GeminiTests(unittest.TestCase):
+    def test_gemini_script_must_pass_the_same_checks_or_pages_are_used(self):
+        from pipeline import gemini
+        good = script()
+        with mock.patch.object(gemini, "available", return_value=True), \
+             mock.patch.object(gemini, "generate_json", return_value=good), \
+             mock.patch.dict(os.environ, {"LONG_WRITER": "auto"}):
+            self.assertEqual(writer.write({**M, "material_words": 2400})["cost_usd"], 0.0)  # target 1,200 words
+        bad = script(extra=" It has 99 plugins.")
+        with mock.patch.object(gemini, "available", return_value=True), \
+             mock.patch.object(gemini, "generate_json", return_value=bad), \
+             mock.patch.dict(os.environ, {"LONG_WRITER": "auto"}):
+            self.assertIsNone(writer.write_gemini({**M, "material_words": 2000}))
+
+    def test_short_script_from_gemini_keeps_the_fact_checks(self):
+        from pipeline import generate
+        row = {"title": "a/box", "raw": "{}", "source": "github"}
+        claims = [{"text": "box builds things fast with one command"}]
+        ok = generate._checked(row, claims, {"hooks": ["Want faster builds?"], "best": 0, "beats": ["Meet box."]})
+        self.assertEqual(ok["hook"], "Want faster builds?")
+        self.assertIsNone(generate._checked(row, claims, {"hooks": ["Want faster builds?"], "beats": ["10x faster."]}))
+        self.assertIsNone(generate._checked(row, claims, {"hooks": ["Faster builds."], "beats": ["Meet box."]}))
