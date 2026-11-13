@@ -40,8 +40,8 @@ def _post(url, data, headers=None):
 def youtube_token(channel="main"):
     """Prefer a refresh-token flow (tokens expire in 1h); fall back to a raw access token (main only).
     Each sister channel has its own refresh token (same OAuth client)."""
-    from .channels import youtube_refresh_token
-    cid, sec = os.environ.get("YOUTUBE_CLIENT_ID"), os.environ.get("YOUTUBE_CLIENT_SECRET")
+    from .channels import youtube_client, youtube_refresh_token
+    cid, sec = youtube_client(channel)
     rt = youtube_refresh_token(channel)
     if cid and sec and rt:
         return _post("https://oauth2.googleapis.com/token", {
@@ -224,9 +224,9 @@ MAX_SECONDS = {"facebook": 60, "instagram_story": 60, "facebook_story": 120}
 
 
 def youtube_token_available(channel="main"):
-    from .channels import youtube_refresh_token
+    from .channels import youtube_client, youtube_refresh_token
     e = os.environ
-    client = e.get("YOUTUBE_CLIENT_ID") and e.get("YOUTUBE_CLIENT_SECRET")
+    client = all(youtube_client(channel))
     if channel != "main":
         return bool(client and youtube_refresh_token(channel))
     return bool(e.get("YOUTUBE_ACCESS_TOKEN") or (client and e.get("YOUTUBE_REFRESH_TOKEN")))

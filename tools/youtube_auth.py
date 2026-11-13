@@ -2,8 +2,8 @@
 
     python tools/youtube_auth.py [client_secret.json] [--channel kids|everyday]
 
---channel stores the token for a sister channel (YOUTUBE_REFRESH_TOKEN_KIDS / _EVERYDAY): on Google's screen,
-pick that channel (brand account) when asked which channel to use.
+--channel stores the token (and the OAuth client it was issued to) for a sister channel
+(YOUTUBE_REFRESH_TOKEN_KIDS / _EVERYDAY, YOUTUBE_CLIENT_ID_KIDS ...): on Google's screen, pick that channel.
 
 Opens your browser, you approve the `youtube.upload`, `youtube.readonly` and `youtube.force-ssl` scopes, and the
 refresh token is stored straight into GitHub Actions secrets with the `gh` CLI. Tokens are
@@ -68,7 +68,9 @@ def main():
     if channel:
         if channel not in ("kids", "everyday"):
             sys.exit("--channel must be kids or everyday")
-        pairs = ((f"YOUTUBE_REFRESH_TOKEN_{channel.upper()}", rt),)  # same OAuth client as the main channel
+        up = channel.upper()  # the channel's own OAuth client too: a token only works with the client that issued it
+        pairs = ((f"YOUTUBE_CLIENT_ID_{up}", cfg["client_id"]), (f"YOUTUBE_CLIENT_SECRET_{up}", cfg["client_secret"]),
+                 (f"YOUTUBE_REFRESH_TOKEN_{up}", rt))
     else:
         pairs = (("YOUTUBE_CLIENT_ID", cfg["client_id"]), ("YOUTUBE_CLIENT_SECRET", cfg["client_secret"]),
                  ("YOUTUBE_REFRESH_TOKEN", rt))

@@ -131,6 +131,14 @@ def watermark(key):
     return os.environ.get("WATERMARK_TEXT") or ""
 
 
+def youtube_client(channel):
+    """(client_id, client_secret) for the channel's YouTube token: its own OAuth client when stored
+    (YOUTUBE_CLIENT_ID_KIDS ...), else the main channel's."""
+    up = "_" + channel.upper() if channel in CHANNELS else ""
+    own = (os.environ.get("YOUTUBE_CLIENT_ID" + up), os.environ.get("YOUTUBE_CLIENT_SECRET" + up))
+    return own if up and all(own) else (os.environ.get("YOUTUBE_CLIENT_ID"), os.environ.get("YOUTUBE_CLIENT_SECRET"))
+
+
 def youtube_refresh_token(channel):
     if channel == MAIN:
         return os.environ.get("YOUTUBE_REFRESH_TOKEN")
