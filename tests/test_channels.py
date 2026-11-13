@@ -231,3 +231,15 @@ class ToolSourceTests(unittest.TestCase):
         with mock.patch.object(sources, "hugging_face", return_value=[]), mock.patch.dict(os.environ, {}, clear=True):
             sources.run(conn)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM catalog_tools").fetchone()[0], 0)
+
+
+class HackerNewsTests(unittest.TestCase):
+    def test_show_hn_products_only_not_repos(self):
+        from pipeline import sources
+        hits = {"hits": [
+            {"title": "Show HN: Clipster – turn podcasts into video clips with AI", "url": "https://clipster.app/x?y=1",
+             "points": 90},
+            {"title": "Show HN: Repo – an AI agent", "url": "https://github.com/a/b", "points": 300},
+            {"title": "Show HN: Bet – AI casino picks", "url": "https://bet.example", "points": 50}]}
+        with mock.patch.object(sources, "request", return_value=(200, {}, json.dumps(hits).encode())):
+            self.assertEqual(sources.hacker_news(), [("tools", "video", "Clipster", "https://clipster.app/")])

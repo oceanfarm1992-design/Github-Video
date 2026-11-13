@@ -1,6 +1,7 @@
 """New AI tools from two free official APIs, added to the AI-tools catalogs (pipeline/catalog.py).
 
 Hugging Face Spaces - public API, trending AI apps (main channel's AI-tools series).
+Hacker News         - public Algolia API (no key), this week's 'Show HN' AI launches (main, AI for Normal People).
 Product Hunt        - official GraphQL API (PRODUCT_HUNT_API token), new AI products (main, AI for Kids,
                       AI for Normal People). Product Hunt's API terms restrict commercial use without their
                       permission; the owner chose to use it.
@@ -89,6 +90,35 @@ def hugging_face():
     return out
 
 
+HN_API = "https://hn.algolia.com/api/v1/search_by_date?tags=show_hn&query=AI&hitsPerPage=100&numericFilters="
+HN_MIN_POINTS = 30
+SKIP_HOSTS = ("github.com", "gitlab.com", "news.ycombinator.com", "youtube.com", "x.com", "twitter.com",
+              "medium.com", "substack.com", "reddit.com", "huggingface.co")
+
+
+def hacker_news():
+    """[(series, category, name, url)] from this week's 'Show HN' AI launches (public Algolia API, no key).
+    Product sites only: code repositories are the GitHub series' job."""
+    since = int(time.time() - 7 * 86400)
+    _, _, body = request(HN_API + urllib.parse.quote(f"points>={HN_MIN_POINTS},created_at_i>{since}"), attempts=2)
+    out = []
+    for h in json.loads(body).get("hits", []):
+        url, title = h.get("url") or "", h.get("title") or ""
+        host = urllib.parse.urlparse(url).netloc.lower().removeprefix("www.")
+        if not url.startswith("https://") or any(host == d or host.endswith("." + d) for d in SKIP_HOSTS):
+            continue
+        rest = re.sub(r"^Show HN:\s*", "", title)
+        name = re.split(r"\s+[–—-]\s+|:\s+|,\s+", rest, maxsplit=1)[0].strip()
+        if not 2 <= len(name) <= 40 or NOT_FOR_VIDEOS.search(rest):
+            continue
+        home = f"https://{urllib.parse.urlparse(url).netloc}/"
+        if cat := topic_for("tools", rest):
+            out.append(("tools", cat, name, home))
+        if cat := topic_for("everyday", rest):
+            out.append(("everyday", cat, name, home))
+    return out
+
+
 def product_hunt(token):
     """[(series, category, name, link)] from new AI products on Product Hunt."""
     out = []
@@ -153,7 +183,7 @@ def run(conn):
     catalog._ensure(conn)
     conn.execute("DELETE FROM catalog_tools WHERE added_at < ?", (time.time() - KEEP_DAYS * 86400,))
     out = {}
-    jobs = [("hugging_face", lambda: hugging_face())]
+    jobs = [("hugging_face", lambda: hugging_face()), ("hacker_news", lambda: hacker_news())]
     # Product Hunt hides every product's own link behind producthunt.com/r/ redirects, which Cloudflare blocks
     # for scripts; it stays off (PRODUCT_HUNT=1 turns it back on if that changes)
     token = os.environ.get("PRODUCT_HUNT_API") if os.environ.get("PRODUCT_HUNT") == "1" else None
