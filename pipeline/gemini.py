@@ -67,7 +67,7 @@ def generate_json(prompt, system=None, max_tokens=16000):
                 break
             except RuntimeError as e:
                 log.warning("gemini %s failed: %s", name, str(e)[:200])
-                if attempt == 0 and re.search(r"(429|500|503)", str(e)):
+                if attempt == 0 and re.search(r"\b(429|500|503)\b", str(e)):
                     time.sleep(45)
                     continue
                 break
