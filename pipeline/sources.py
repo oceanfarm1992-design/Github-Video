@@ -89,14 +89,6 @@ def hugging_face():
     return out
 
 
-def ph_schema(token):
-    """Diagnostic: the Post type's fields (run the sources stage with sources=ph-schema)."""
-    q = '{ posts(first: 5, order: VOTES, topic: "artificial-intelligence") { edges { node { name website productLinks { type url } } } } }'
-    _, _, body = request(PH_API, method="POST", data=json.dumps({"query": q}).encode(),
-                         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-    log.info("product hunt links: %s", body[:1500].decode("utf-8", "replace").replace('"', "'"))
-
-
 def product_hunt(token):
     """[(series, category, name, link)] from new AI products on Product Hunt."""
     out = []
@@ -160,12 +152,11 @@ def run(conn):
     """Once a day: new tools from Hugging Face and Product Hunt; tools found more than a year ago are dropped."""
     catalog._ensure(conn)
     conn.execute("DELETE FROM catalog_tools WHERE added_at < ?", (time.time() - KEEP_DAYS * 86400,))
-    if os.environ.get("GENERATE_SOURCES") == "ph-schema" and os.environ.get("PRODUCT_HUNT_API"):
-        ph_schema(os.environ["PRODUCT_HUNT_API"])
-        return {}
     out = {}
     jobs = [("hugging_face", lambda: hugging_face())]
-    token = os.environ.get("PRODUCT_HUNT_API")
+    # Product Hunt hides every product's own link behind producthunt.com/r/ redirects, which Cloudflare blocks
+    # for scripts; it stays off (PRODUCT_HUNT=1 turns it back on if that changes)
+    token = os.environ.get("PRODUCT_HUNT_API") if os.environ.get("PRODUCT_HUNT") == "1" else None
     if token:
         jobs.append(("product_hunt", lambda: product_hunt(token)))
     for name, fetch in jobs:  # each source once a day; a failed one retries on the next run
