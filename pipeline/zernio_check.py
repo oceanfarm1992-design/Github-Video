@@ -12,6 +12,31 @@ def _short(d, keys):
     return {k: d.get(k) for k in keys if k in d}
 
 
+def youtube_channels():
+    """Which YouTube channel each stored token posts to (1 quota unit each), so a token made for the wrong
+    channel is caught before anything is uploaded."""
+    import json
+    from . import channels, publish
+    from .http import request
+    out = {}
+    for ch in ["main", *channels.CHANNELS]:
+        try:
+            tok = publish.youtube_token(ch) if publish.youtube_token_available(ch) else None
+            if not tok:
+                out[ch] = "no token"
+                continue
+            _, _, r = request("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+                              headers={"Authorization": f"Bearer {tok}"})
+            items = json.loads(r).get("items", [])
+            out[ch] = {"id": items[0]["id"], "title": items[0]["snippet"]["title"]} if items else "no channel"
+        except Exception as e:
+            out[ch] = f"error: {str(e)[:150]}"
+    ids = [v["id"] for v in out.values() if isinstance(v, dict)]
+    if len(ids) != len(set(ids)):
+        out["WARNING"] = "two channels share one YouTube channel: re-run youtube_auth.py and pick the right one"
+    return out
+
+
 def run(conn=None):
     out = {}
     if not zernio.enabled():
@@ -25,6 +50,7 @@ def run(conn=None):
     except Exception as e:
         out["accounts_error"] = str(e)[:200]
     import os
+    out["youtube_channels"] = youtube_channels()
     if os.environ.get(zernio.SISTER_KEY):  # second workspace: the sister channels' accounts
         try:
             data = zernio._call("/accounts", api=zernio.SISTER_KEY)
