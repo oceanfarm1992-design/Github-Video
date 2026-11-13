@@ -41,14 +41,13 @@ def discover():
 
 
 def next_tool(conn, tools):
-    """Never-shown tools first (homepage order), then the least recently shown."""
+    """The first tool never shown (homepage order); None once every tool was shown (no repeats; a tool the
+    site adds later is picked up automatically)."""
     last = {}
     for r in conn.execute("SELECT source, MAX(updated_at) t FROM topics WHERE source LIKE 'promo:%' GROUP BY source"):
         last[r["source"].split(":", 1)[1]] = r["t"] or 0
     fresh = [t for t in tools if t[0] not in last]
-    if fresh:
-        return fresh[0]
-    return min(tools, key=lambda t: last.get(t[0], 0)) if tools else None
+    return fresh[0] if fresh else None
 
 
 def tour(name, url, description, sections):

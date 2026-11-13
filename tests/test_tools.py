@@ -144,7 +144,8 @@ class ToolsTests(unittest.TestCase):
         conn.execute("INSERT INTO topics (id,title,source,url,status,updated_at) VALUES ('a','t','promo:merge-pdf','u','PUBLISHED',1)")
         self.assertEqual(promo.next_tool(conn, tools)[0], "split-pdf")       # never-shown first
         conn.execute("INSERT INTO topics (id,title,source,url,status,updated_at) VALUES ('b','t','promo:split-pdf','u','PUBLISHED',2)")
-        self.assertEqual(promo.next_tool(conn, tools)[0], "merge-pdf")       # then least recently shown
+        self.assertIsNone(promo.next_tool(conn, tools))                       # all shown: no repeat
+        self.assertEqual(promo.next_tool(conn, tools + [("new-tool", "u3")])[0], "new-tool")  # only new ones
         self.assertEqual(promo.EXCLUDE, {"unlock-pdf", "remove-password"})  # kept out of the rotation
         self.assertEqual(generate.kind("promo:merge-pdf"), "promo")
         mk = lambda src, sc: {"source": src, "score": sc}

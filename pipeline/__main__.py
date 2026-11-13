@@ -8,9 +8,9 @@ from . import analytics, channel_series, db, engage, longform, preview, zernio_c
 STAGES = {
     "collect": ["discover", "filter"],           # every 30-60 min: cheap metadata
     "research": ["filter", "research", "score"],  # every 3-6 h: only candidates
-    "produce": ["trending", "tools", "sites", "promo", "channels", "weekly", "generate", "render", "qc", "publish"],  # daily
+    "produce": ["trending", "catalog", "tools", "sites", "promo", "channels", "weekly", "generate", "render", "qc", "publish"],  # daily
     "engage": ["engage"],                         # every 30 min: answer keyword comments
-    "draft": ["trending", "tools", "sites", "promo", "channels", "weekly", "generate", "render", "qc"],  # make + check videos, never publishes
+    "draft": ["trending", "catalog", "tools", "sites", "promo", "channels", "weekly", "generate", "render", "qc"],  # make + check videos, never publishes
     "preview": ["preview"],                      # sample render, never publishes
     "voicetest": ["voicetest"],                   # cloned-voice A/B samples, never publishes
     "zernio": ["zernio"],                         # read-only: list Zernio accounts + automations
@@ -34,6 +34,9 @@ def run_stage(name, conn):
         return tools.run(conn)
     if name == "promo":
         return promo.run(conn)
+    if name == "catalog":  # keep the AI-tools lists stocked with tools never shown
+        from . import catalog
+        return catalog.run(conn)
     if name == "channels":  # sister channels: AI for Kids, AI for Normal People
         return channel_series.run(conn)
     if name == "sites":

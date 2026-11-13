@@ -127,9 +127,8 @@ def run(conn):
         if not publish.platforms(key):  # accounts not connected yet: make nothing that would pile up unposted
             log.info("%s: no YouTube token or Zernio account connected yet; no Short made", key)
             continue
-        catalog = CATALOGS[key]
-        for cat in tools.candidates(conn, catalog, key, REUSE_DAYS)[:2]:  # each try checks ~8 sites in a browser
-            if tools.build(conn, cat, config.CHANNEL_TOOLS_PER_VIDEO, catalog, key):
+        for cat in tools.candidates(conn, None, key, REUSE_DAYS)[:2]:  # each try checks ~8 sites in a browser
+            if tools.build(conn, cat, config.CHANNEL_TOOLS_PER_VIDEO, None, key):
                 made += 1
                 break
             db.kv_set(conn, f"{key}_failed:{cat}", str(time.time()))

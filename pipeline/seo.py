@@ -140,17 +140,20 @@ def title(c):
     elif k == "tools":
         n = len(raw.get("tools") or [])
         phrase = raw.get("phrase", "").title()
-        opts = [f"{n} AI Tools for {phrase} You Should Know", f"{n} AI Tools for {phrase}", hook]
+        part = f" (Part {raw['part']})" if (raw.get("part") or 1) > 1 else ""
+        opts = [f"{n} AI Tools for {phrase} You Should Know{part}", f"{n} AI Tools for {phrase}{part}", hook]
     elif k == "kids":
         n = len(raw.get("tools") or [])
         phrase = raw.get("phrase", "")
-        opts = [f"{n} AI Tools for {phrase[0].upper() + phrase[1:]} (Parents & Teachers)" if phrase else hook,
-                f"{n} AI Tools for {phrase}", hook]
+        part = f" - Part {raw['part']}" if (raw.get("part") or 1) > 1 else ""
+        opts = [f"{n} AI Tools for {phrase[0].upper() + phrase[1:]}{part} (Parents & Teachers)" if phrase else hook,
+                f"{n} AI Tools for {phrase}{part}", hook]
     elif k == "everyday":
         n = len(raw.get("tools") or [])
         phrase = raw.get("phrase", "")
-        opts = [f"{n} Easy AI Tools for {phrase[0].upper() + phrase[1:]} (No Tech Skills Needed)" if phrase else hook,
-                f"{n} Easy AI Tools for {phrase}", hook]
+        part = f" - Part {raw['part']}" if (raw.get("part") or 1) > 1 else ""
+        opts = [f"{n} Easy AI Tools for {phrase[0].upper() + phrase[1:]}{part} (No Tech Skills Needed)" if phrase else hook,
+                f"{n} Easy AI Tools for {phrase}{part}", hook]
     elif k == "sites":
         opts = [f"Websites That Feel Illegal to Know - Part {raw.get('part', 1)}: {name}", hook]
     elif k == "ranking":

@@ -145,13 +145,17 @@ def _visuals_for(items):
     return visuals
 
 
-def tools_review(conn, used, out_dir, catalog=None, fmt="tools", need=5, max_items=8, repeat=False):
-    """repeat: when every category was used, start again with the one used longest ago."""
-    cats = list((catalog or tools.CATALOG).items())
-    fresh = [c for c in cats if f"{fmt}:{c[0]}" not in used]
-    if repeat and not fresh:
-        fresh = sorted(cats, key=lambda c: used.get(f"{fmt}:{c[0]}") or "")
-    for category, (phrase, _tag, entries) in fresh:
+def tools_review(conn, used, out_dir, series="tools", fmt="tools", need=5, max_items=8):
+    """One topic's tools that no earlier long video of this format showed (a tool is never shown twice);
+    topics never covered first, then the one covered longest ago."""
+    from .. import catalog
+    shown = {k.split(":", 2)[2] for k in used if k.startswith(f"tool:{fmt}:")}
+    cats = list(catalog.merged(conn, series).items())
+    cats.sort(key=lambda c: (f"{fmt}:{c[0]}" in used, used.get(f"{fmt}:{c[0]}") or ""))
+    for category, (phrase, _tag, entries) in cats:
+        entries = [(n, u) for n, u in entries if catalog.norm(u) not in shown]
+        if len(entries) < need:
+            continue
         pages, items = _site_pages(entries, out_dir, need=need, max_items=max_items, min_sections=2)
         if not items:
             continue
@@ -159,7 +163,11 @@ def tools_review(conn, used, out_dir, catalog=None, fmt="tools", need=5, max_ite
                             for i, it in enumerate(items, 1))
         visuals = _visuals_for(items)
         subject = f"{len(items)} AI tools for {phrase}" if fmt == "tools_top10" else f"AI tools for {phrase}"
+        if f"{fmt}:{category}" in used:
+            subject += " (part 2)" if not any(k.startswith(f"{fmt}:{category}:") for k in used) else " (more)"
         return {"format": fmt, "subject": subject, "key": f"{fmt}:{category}",
+                "site_keys": [f"tool:{fmt}:{catalog.norm(it['url'])}" for it in items]
+                + ([f"{fmt}:{category}:{time.strftime('%Y-%m-%d', time.gmtime())}"] if f"{fmt}:{category}" in used else []),
                 "facts": facts, "visuals": visuals, "pages": pages,
                 "links": [(it["name"], it["url"]) for it in items],
                 "material_words": words(facts) + sum(words(v.get("text", "")) for v in visuals)}
@@ -186,8 +194,7 @@ def sites_tour(conn, used, out_dir):
 
 def _sister(fmt):
     def build(conn, used, out_dir):
-        from ..channel_series import CATALOGS
-        return tools_review(conn, used, out_dir, CATALOGS[fmt], fmt)
+        return tools_review(conn, used, out_dir, series=fmt, fmt=fmt)
     return build
 
 
@@ -231,7 +238,7 @@ def github_top10(conn, used, out_dir):
 
 
 def tools_top10(conn, used, out_dir):
-    return tools_review(conn, used, out_dir, fmt="tools_top10", need=7, max_items=10, repeat=True)
+    return tools_review(conn, used, out_dir, series="tools", fmt="tools_top10", need=7, max_items=10)
 
 
 # Each monthly tour covers one group of tools that no earlier tour covered, so no two tours repeat.

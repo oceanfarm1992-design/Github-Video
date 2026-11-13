@@ -178,3 +178,31 @@ class ContentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UniqueToolTests(unittest.TestCase):
+    def test_a_tool_is_never_shown_twice_in_a_series(self):
+        from pipeline import catalog, db, tools
+        conn = db.connect(":memory:")
+        cat = {"art": ("drawing", "#Art", [(f"T{i}", f"https://t{i}.example") for i in range(12)])}
+        shown = [{"name": f"T{i}", "url": f"https://www.t{i}.example/"} for i in range(5)]
+        conn.execute("INSERT INTO topics (id,title,source,url,raw,status,updated_at) VALUES (?,?,?,?,?,?,?)",
+                     ("a", "x", "kids:art", "u", json.dumps({"tools": shown}), "PUBLISHED", 1))
+        used = catalog.used_urls(conn, "kids")
+        left = catalog.unused(cat["art"][2], used)
+        self.assertEqual([n for n, _ in left], [f"T{i}" for i in range(5, 12)])  # www and slash do not matter
+        with mock.patch.object(tools, "url_ok", return_value=True), \
+             mock.patch.object(tools, "describe", side_effect=lambda n, u: f"{n} makes art for you."), \
+             mock.patch.object(tools, "shows_in_browser", return_value=True), \
+             mock.patch.object(catalog, "merged", return_value=cat), \
+             mock.patch.object(config, "CHANNEL_TOOLS_PER_VIDEO", 5):
+            tid = tools.build(conn, "art", 5, None, "kids")
+        row = conn.execute("SELECT title, raw FROM topics WHERE id=?", (tid,)).fetchone()
+        self.assertEqual([t["name"] for t in json.loads(row["raw"])["tools"]], [f"T{i}" for i in range(5, 10)])
+        self.assertEqual(row["title"], "5 AI tools for drawing (part 2)")
+
+    def test_suggested_tool_must_match_its_site(self):
+        from pipeline import catalog
+        self.assertTrue(catalog.identity_ok("Khanmigo", "https://www.khanmigo.ai", "Khanmigo", ""))
+        self.assertTrue(catalog.identity_ok("Read Along", "https://readalong.google", "", ""))
+        self.assertFalse(catalog.identity_ok("Magic Tutor", "https://example.com", "Buy domains", "Parked page"))
