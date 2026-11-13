@@ -341,9 +341,17 @@ def add_to_playlist(conn, token, c, video_id):
         if not pid:
             return False
         body = {"snippet": {"playlistId": pid, "resourceId": {"kind": "youtube#video", "videoId": video_id}}}
-        request("https://www.googleapis.com/youtube/v3/playlistItems?part=snippet", data=json.dumps(body).encode(),
-                method="POST", headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-        return True
+        import time
+        for attempt in range(3):  # 409 "operation was aborted": a playlist created seconds ago is not ready yet
+            try:
+                request("https://www.googleapis.com/youtube/v3/playlistItems?part=snippet",
+                        data=json.dumps(body).encode(), method="POST",
+                        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                return True
+            except RuntimeError as e:
+                if "409" not in str(e) or attempt == 2:
+                    raise
+                time.sleep(10 * (attempt + 1))
     except Exception as e:  # never block a publish on a playlist
         log.warning("playlist add failed: %s", e)
         return False
