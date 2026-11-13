@@ -11,7 +11,8 @@ STAGES = {
     "produce": ["trending", "sources", "catalog", "tools", "sites", "promo", "channels", "weekly", "generate", "render", "qc", "publish"],  # daily
     "engage": ["engage"],                         # every 30 min: answer keyword comments
     "draft": ["trending", "sources", "catalog", "tools", "sites", "promo", "channels", "weekly", "generate", "render", "qc"],  # make + check videos, never publishes
-    "preview": ["preview"],                      # sample render, never publishes
+    "preview": ["preview"],
+    "channeltest": ["channels", "generate", "render", "qc", "publish"],  # one Short for a sister channel now (YouTube private)                      # sample render, never publishes
     "voicetest": ["voicetest"],                   # cloned-voice A/B samples, never publishes
     "zernio": ["zernio"],                         # read-only: list Zernio accounts + automations
     "long": ["long"],                             # 3x a week: 8-15 min video for YouTube + Facebook
@@ -88,6 +89,11 @@ def main(argv=None):
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
                         format='{"t":"%(asctime)s","lvl":"%(levelname)s","mod":"%(name)s","msg":"%(message)s"}')
     log = logging.getLogger("main")
+    if a.stage == "channeltest":
+        import os
+        os.environ["CHANNEL_TEST"] = (os.environ.get("GENERATE_SOURCES") or "").strip()
+        if os.environ["CHANNEL_TEST"] not in ("kids", "everyday"):
+            raise SystemExit("channeltest needs sources=kids or sources=everyday")
     with db.db() as conn:
         db.requeue_retries(conn)
         for s in STAGES.get(a.stage, [a.stage]):

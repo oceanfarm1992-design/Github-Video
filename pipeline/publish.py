@@ -71,7 +71,8 @@ def youtube_upload(token, c, links=None):
                         "defaultLanguage": "en", "defaultAudioLanguage": "en"},
             # containsSyntheticMedia: the narration is an AI clone of the owner's voice (YouTube's
             # "altered or synthetic content" disclosure)
-            "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False,
+            "status": {"privacyStatus": "private" if os.environ.get("CHANNEL_TEST") else "public",
+                       "selfDeclaredMadeForKids": False,
                        "containsSyntheticMedia": True}}
     data = open(c["video_path"], "rb").read()
     _, hdr, _ = request(

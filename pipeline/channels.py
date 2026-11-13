@@ -64,7 +64,9 @@ def enabled():
 
 
 def short_due(key, today=None):
-    """True on the days this channel gets a Short."""
+    """True on the days this channel gets a Short (always for the channel under a `channeltest` run)."""
+    if os.environ.get("CHANNEL_TEST") == key and key in CHANNELS:
+        return True
     every = max(1, config.CHANNEL_SHORT_EVERY_DAYS)
     n = _days_since(config.CHANNELS_START, _today(today))
     return key in enabled() and n >= 0 and n % every == CHANNELS[key].short_offset % every

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "collect | research | tools | sites | promo | produce | draft | engage | preview | zernio | voicetest | analyze | long | longpreview | all"
+        description: "collect | research | tools | sites | promo | produce | draft | engage | preview | zernio | voicetest | analyze | long | longpreview | channeltest | all"
         default: collect
       max_videos:
         description: "Override MAX_VIDEOS_PER_DAY for this run (optional)"
@@ -117,7 +117,7 @@ jobs:
             *)               s="${{ github.event.inputs.stage || 'collect' }}" ;;
           esac
           echo "name=$s" >> "$GITHUB_OUTPUT"
-          case "$s" in produce|all|preview|draft|voicetest|long|longpreview) echo "heavy=true" >> "$GITHUB_OUTPUT" ;; *) echo "heavy=false" >> "$GITHUB_OUTPUT" ;; esac
+          case "$s" in produce|all|preview|draft|voicetest|long|longpreview|channeltest) echo "heavy=true" >> "$GITHUB_OUTPUT" ;; *) echo "heavy=false" >> "$GITHUB_OUTPUT" ;; esac
 
       - name: Cache voice-clone models
         if: ${{ vars.VOICE_REF_REPO != '' && steps.stage.outputs.heavy == 'true' }}
