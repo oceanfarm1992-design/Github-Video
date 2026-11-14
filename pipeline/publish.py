@@ -203,10 +203,22 @@ def platforms(channel="main"):
     return out
 
 
+def shared_to_main():
+    """Platforms where a sister channel without its own account posts to the main channel's account
+    (SISTER_TO_MAIN, default instagram,linkedin)."""
+    return {p.strip() for p in os.environ.get("SISTER_TO_MAIN", "instagram,linkedin").split(",") if p.strip()}
+
+
 def sister_platforms(channel):
-    """A sister channel posts only to its own YouTube channel and its own Zernio accounts (Facebook,
-    Instagram, TikTok, plus the Stories); nothing goes to the main channel's accounts."""
+    """A sister channel posts to its own YouTube channel and its own Zernio accounts (Facebook, Instagram,
+    TikTok, plus the Stories). Where it has no account of its own, SISTER_TO_MAIN platforms (Instagram,
+    LinkedIn) get the video on the main channel's account; everything else stays off the main accounts."""
     out = {}
+    shared = shared_to_main()
+    if "instagram" in shared and not zernio.available("instagram", channel) and zernio.available("instagram"):
+        out["instagram"] = (True, lambda c, url: zernio.publish_reel("instagram", c, url))
+    if "linkedin" in shared and buffer.enabled() and buffer.available("linkedin"):
+        out["linkedin"] = (True, lambda c, url: buffer.publish("linkedin", c, url))
     if youtube_token_available(channel):
         out["youtube"] = (False, None)
     if zernio.enabled(channel):

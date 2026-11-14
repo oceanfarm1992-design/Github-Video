@@ -262,3 +262,17 @@ class AppStoreTests(unittest.TestCase):
              mock.patch.object(sources, "request", return_value=(200, {}, json.dumps(results).encode())), \
              mock.patch.object(sources.time, "sleep"):
             self.assertEqual(sources.app_store(), [("kids", "coding", "Tynker", "https://www.tynker.com/")])
+
+
+class SharedToMainTests(unittest.TestCase):
+    def test_sister_videos_also_go_to_main_instagram_and_linkedin(self):
+        from pipeline import buffer, zernio
+        own = {("facebook", "kids"), ("instagram", "main")}
+        with mock.patch.object(zernio, "enabled", return_value=True), \
+             mock.patch.object(zernio, "available", side_effect=lambda p, ch="main": (p, ch) in own), \
+             mock.patch.object(buffer, "enabled", return_value=True), \
+             mock.patch.object(buffer, "available", side_effect=lambda s: s == "linkedin"), \
+             mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(set(publish.platforms("kids")), {"facebook", "facebook_story", "instagram", "linkedin"})
+            with mock.patch.dict(os.environ, {"SISTER_TO_MAIN": ""}):
+                self.assertEqual(set(publish.platforms("kids")), {"facebook", "facebook_story"})

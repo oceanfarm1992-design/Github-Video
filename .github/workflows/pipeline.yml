@@ -83,6 +83,7 @@ jobs:
       CHANNEL_SHORT_EVERY_DAYS: ${{ vars.CHANNEL_SHORT_EVERY_DAYS || '2' }}
       CHANNEL_LONG_EVERY_DAYS: ${{ vars.CHANNEL_LONG_EVERY_DAYS || '5' }}
       CHANNEL_ACCOUNTS: ${{ vars.CHANNEL_ACCOUNTS }}
+      SISTER_TO_MAIN: ${{ vars.SISTER_TO_MAIN || 'instagram,linkedin' }}  # sister videos also on these main accounts
       GENERATE_SCORE_NEWS: ${{ vars.GENERATE_SCORE_NEWS || '65' }}
       GENERATE_SOURCES: ${{ github.event.inputs.sources }}
       MAX_RENDERS_PER_TOPIC: ${{ vars.MAX_RENDERS_PER_TOPIC || '2' }}

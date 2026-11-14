@@ -196,6 +196,8 @@ def run(conn):
     for p in posts:
         plat, pid = p["platform"], p["post_id"]
         ch = of_source(p["source"])
+        if ch != "main" and plat in ("instagram", "linkedin") and not zernio.available(plat, ch):
+            ch = "main"  # a sister channel's video posted on the main account (SISTER_TO_MAIN)
         budget = min(MAX_REPLIES_PER_RUN - stats["replies"], MAX_REPLIES_PER_DAY - sent_today)
         if budget <= 0:
             break
