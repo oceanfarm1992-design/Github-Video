@@ -278,6 +278,36 @@ def record_published(platform, topic_id, post_id, url):
         log.warning("published_posts write failed: %s", e)
 
 
+def make_public(conn):
+    """Sets the sister channels' private test Shorts to public, then adds each to its playlist and posts the
+    link comment (both refused while private). Returns the video ids made public."""
+    from .channels import of_source
+    rows = conn.execute(
+        "SELECT p.post_id, c.*, t.source AS tsource, t.raw AS traw FROM posts p JOIN contents c ON c.id=p.content_id "
+        "JOIN topics t ON t.id=c.topic_id WHERE p.platform='youtube' AND (t.source LIKE 'kids:%' OR "
+        "t.source LIKE 'everyday:%')").fetchall()
+    done = []
+    for r in rows:
+        c, vid = dict(r), r["post_id"]
+        channel = of_source(c["tsource"])
+        tok = youtube_token(channel)
+        _, _, resp = request(f"https://www.googleapis.com/youtube/v3/videos?part=status&id={vid}",
+                             headers={"Authorization": f"Bearer {tok}"})
+        items = json.loads(resp).get("items", [])
+        if not items or items[0]["status"].get("privacyStatus") != "private":
+            continue
+        body = {"id": vid, "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False,
+                                      "containsSyntheticMedia": True}}
+        request("https://www.googleapis.com/youtube/v3/videos?part=status", method="PUT", data=json.dumps(body).encode(),
+                headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"})
+        m = conn.execute("SELECT cta_keyword, response FROM cta_map WHERE video_id=?", (c["id"],)).fetchone()
+        links = link_block(m["response"]) if m else ""
+        seo.add_to_playlist(conn, tok, c, vid)
+        youtube_first_comment(tok, vid, c, links)
+        done.append(vid)
+    return done
+
+
 def cleanup_release_assets(days=14):
     """Delete hosted videos older than `days` from the public `videos` release (Instagram/Facebook
     fetch them within minutes of posting); keeps the release small and stops old files lingering."""

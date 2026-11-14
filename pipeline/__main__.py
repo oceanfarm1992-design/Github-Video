@@ -12,6 +12,7 @@ STAGES = {
     "engage": ["engage"],                         # every 30 min: answer keyword comments
     "draft": ["trending", "sources", "catalog", "tools", "sites", "promo", "channels", "weekly", "generate", "render", "qc"],  # make + check videos, never publishes
     "preview": ["preview"],
+    "makepublic": ["makepublic"],  # sister channels' private test Shorts -> public
     "channeltest": ["channels", "generate", "render", "qc", "publish"],  # one Short for a sister channel now (YouTube private)                      # sample render, never publishes
     "voicetest": ["voicetest"],                   # cloned-voice A/B samples, never publishes
     "zernio": ["zernio"],                         # read-only: list Zernio accounts + automations
@@ -35,6 +36,8 @@ def run_stage(name, conn):
         return tools.run(conn)
     if name == "promo":
         return promo.run(conn)
+    if name == "makepublic":
+        return publish.make_public(conn)
     if name == "sources":  # new tools from Hugging Face Spaces and Product Hunt (kept one year)
         from . import sources
         return sources.run(conn)
